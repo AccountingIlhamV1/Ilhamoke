@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chart of Accounts - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Chart of Accounts</h1>
+          <p id="topbarSubtitle">Daftar akun berdasarkan usaha yang sedang aktif</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif.<br><br>
+        Silakan buat atau pilih usaha terlebih dahulu.<br><br>
+        <a href="business.html">Buka Data Usaha</a>
+      </div>
+
+      <div class="card">
+        <h2 id="formTitle">➕ Tambah Akun</h2>
+        <div id="statusMessage" class="status-line">Memuat data...</div>
+
+        <form id="accountForm">
+
+          <div class="form-grid">
+            <div>
+              <label for="accountCode">Kode Akun</label>
+              <input type="text" id="accountCode" required placeholder="1101">
+            </div>
+            <div>
+              <label for="accountName">Nama Akun</label>
+              <input type="text" id="accountName" required placeholder="Kas">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="accountGroup">Kelompok Akun</label>
+              <select id="accountGroup" required>
+                <option value="">-- Pilih Kelompok --</option>
+                <option value="Aset Lancar">Aset Lancar</option>
+                <option value="Aset Tetap">Aset Tetap</option>
+                <option value="Aset Lainnya">Aset Lainnya</option>
+                <option value="Liabilitas Jangka Pendek">Liabilitas Jangka Pendek</option>
+                <option value="Liabilitas Jangka Panjang">Liabilitas Jangka Panjang</option>
+                <option value="Ekuitas">Ekuitas</option>
+                <option value="Pendapatan">Pendapatan</option>
+                <option value="Beban">Beban</option>
+              </select>
+            </div>
+            <div>
+              <label for="normalBalance">Saldo Normal</label>
+              <select id="normalBalance" required>
+                <option value="">-- Pilih Saldo Normal --</option>
+                <option value="Debit">Debit</option>
+                <option value="Kredit">Kredit</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-save" id="saveButton">Simpan Akun</button>
+          <button type="button" class="btn-cancel" id="cancelButton" style="display:none">Batal Edit</button>
+
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>📋 Daftar Chart of Accounts</h2>
+        <p class="card-sub">Hanya akun milik usaha aktif yang ditampilkan.</p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Kode</th>
+                <th>Nama Akun</th>
+                <th>Kelompok</th>
+                <th>Saldo Normal</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="accountTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "accounts",
+    title: "Chart of Accounts",
+    subtitle: "Daftar akun berdasarkan usaha yang sedang aktif"
+  });
+
+  let editingId = null;
+
+  /* ===== SIMPAN AKUN ===== */
+
+  document.getElementById("accountForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      alert("Buat atau pilih usaha terlebih dahulu.");
+      return;
+    }
+
+    const code = document.getElementById("accountCode").value.trim();
+    const name = document.getElementById("accountName").value.trim();
+    const group = document.getElementById("accountGroup").value;
+    const normalBalance = document.getElementById("normalBalance").value;
+
+    if (!code || !name || !group || !normalBalance) {
+      alert("Semua data akun wajib diisi.");
+      return;
+    }
+
+    const accounts = ERP.getAccounts();
+
+    const duplicate = accounts.some(account =>
+      ERP.idEqual(account.businessId, business.id) &&
+      String(account.code).toLowerCase() === code.toLowerCase() &&
+      !ERP.idEqual(account.id, editingId)
+    );
+
+    if (duplicate) {
+      alert("Kode akun tersebut sudah digunakan pada usaha aktif.");
+      return;
+    }
+
+    if (editingId !== null) {
+
+      const index = accounts.findIndex(a => ERP.idEqual(a.id, editingId));
+
+      if (index < 0 || !ERP.idEqual(accounts[index].businessId, business.id)) {
+        alert("Akun tidak ditemukan pada usaha aktif.");
+        return;
+      }
+
+      accounts[index] = { ...accounts[index], code, name, group, normalBalance };
+      alert("Akun berhasil diperbarui.");
+
+    } else {
+
+      accounts.push({
+        id: String(Date.now()),
+        businessId: business.id,
+        code,
+        name,
+        group,
+        normalBalance,
+        createdAt: new Date().toISOString()
+      });
+
+      alert("Akun berhasil disimpan.");
+    }
+
+    ERP.saveAccounts(accounts);
+    resetForm();
+    render();
+  });
+
+  /* ===== EDIT AKUN ===== */
+
+  function editAccount(id) {
+    const business = ERP.getActiveBusiness();
+    const account = ERP.getActiveAccounts().find(a => ERP.idEqual(a.id, id));
+
+    if (!business || !account) {
+      alert("Akun tidak ditemukan pada usaha aktif.");
+      return;
+    }
+
+    editingId = account.id;
+
+    document.getElementById("accountCode").value = account.code || "";
+    document.getElementById("accountName").value = account.name || "";
+    document.getElementById("accountGroup").value = account.group || "";
+    document.getElementById("normalBalance").value = account.normalBalance || "";
+
+    document.getElementById("formTitle").textContent = "✏️ Edit Akun";
+    document.getElementById("saveButton").textContent = "Update Akun";
+    document.getElementById("cancelButton").style.display = "inline-block";
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /* ===== HAPUS AKUN ===== */
+
+  function deleteAccount(id) {
+    const business = ERP.getActiveBusiness();
+    if (!business) return;
+
+    const accounts = ERP.getAccounts();
+
+    const index = accounts.findIndex(a => ERP.idEqual(a.id, id) && ERP.idEqual(a.businessId, business.id));
+
+    if (index < 0) {
+      alert("Akun tidak ditemukan pada usaha aktif.");
+      return;
+    }
+
+    const account = accounts[index];
+    const confirmed = confirm(`Yakin ingin menghapus akun "${account.code} - ${account.name}"?`);
+
+    if (!confirmed) return;
+
+    accounts.splice(index, 1);
+    ERP.saveAccounts(accounts);
+
+    if (ERP.idEqual(editingId, id)) resetForm();
+
+    render();
+  }
+
+  document.getElementById("cancelButton").addEventListener("click", resetForm);
+
+  /* ===== RESET FORM ===== */
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById("accountForm").reset();
+    document.getElementById("formTitle").textContent = "➕ Tambah Akun";
+    document.getElementById("saveButton").textContent = "Simpan Akun";
+    document.getElementById("cancelButton").style.display = "none";
+  }
+
+  /* ===== RENDER ===== */
+
+  function renderActive() {
+    const business = ERP.getActiveBusiness();
+    const warning = document.getElementById("noBusinessWarning");
+    const status = document.getElementById("statusMessage");
+
+    ERP.updateActiveBadge();
+
+    if (!business) {
+      warning.style.display = "block";
+      status.textContent = "Buat atau pilih usaha terlebih dahulu.";
+      return;
+    }
+
+    warning.style.display = "none";
+    status.textContent = `COA untuk usaha aktif: ${business.name} (${ERP.getActiveAccounts().length} akun)`;
+  }
+
+  function render() {
+    renderActive();
+
+    const table = document.getElementById("accountTable");
+    const accounts = ERP.getActiveAccounts()
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+
+    table.innerHTML = "";
+
+    if (accounts.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="empty">Belum ada COA untuk usaha aktif.</td></tr>`;
+      return;
+    }
+
+    accounts.forEach((account, index) => {
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td><strong>${ERP.escapeHTML(account.code)}</strong></td>
+        <td>${ERP.escapeHTML(account.name)}</td>
+        <td>${ERP.escapeHTML(account.group)}</td>
+        <td>${ERP.escapeHTML(account.normalBalance)}</td>
+        <td>
+          <button class="btn-edit" onclick="editAccount('${ERP.escapeHTML(account.id)}')">✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteAccount('${ERP.escapeHTML(account.id)}')">🗑️ Hapus</button>
+        </td>
+      `;
+
+      table.appendChild(row);
+    });
+  }
+
+  render();
+
+</script>
+
+</body>
+</html>
