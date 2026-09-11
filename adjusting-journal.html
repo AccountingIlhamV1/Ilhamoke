@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jurnal Penyesuaian - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Jurnal Penyesuaian</h1>
+          <p id="topbarSubtitle">Catat penyesuaian akhir periode usaha aktif</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div class="card">
+        <h2>Tambah Jurnal Penyesuaian</h2>
+
+        <form id="adjustmentForm">
+
+          <div class="form-grid">
+
+            <div>
+              <label for="adjustmentDate">Tanggal</label>
+              <input type="date" id="adjustmentDate" required>
+            </div>
+
+            <div>
+              <label for="adjustmentReference">Referensi</label>
+              <input type="text" id="adjustmentReference" placeholder="Contoh: AJP-001">
+            </div>
+
+            <div>
+              <label for="debitAccount">Akun Debit</label>
+              <select id="debitAccount" required>
+                <option value="">-- Pilih Akun Debit --</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="creditAccount">Akun Kredit</label>
+              <select id="creditAccount" required>
+                <option value="">-- Pilih Akun Kredit --</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="amount">Nominal</label>
+              <input type="number" id="amount" min="0" step="1" placeholder="0" required>
+            </div>
+
+            <div class="form-group full">
+              <label for="description">Keterangan</label>
+              <textarea id="description" placeholder="Contoh: Penyesuaian beban yang masih harus dibayar" required></textarea>
+            </div>
+
+          </div>
+
+          <div class="actions-row">
+            <button type="submit" class="btn-save">Simpan Penyesuaian</button>
+            <button type="button" class="btn-cancel" onclick="resetForm()">Reset</button>
+          </div>
+
+        </form>
+
+        <div id="formStatus" class="status-line" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <h2>Daftar Jurnal Penyesuaian</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Tanggal</th>
+                <th>Referensi</th>
+                <th>Akun Debit</th>
+                <th>Akun Kredit</th>
+                <th class="number">Nominal</th>
+                <th>Keterangan</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="adjustmentBody">
+              <tr><td colspan="8" class="empty">Memuat data...</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5">TOTAL</td>
+                <td class="number" id="totalAmount">Rp0</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "adjusting-journal",
+    title: "Jurnal Penyesuaian",
+    subtitle: "Catat penyesuaian akhir periode usaha aktif"
+  });
+
+  function renderAdjustments() {
+    const body = document.getElementById("adjustmentBody");
+    const totalElement = document.getElementById("totalAmount");
+
+    const adjustments = ERP.getActiveAdjustments();
+
+    if (adjustments.length === 0) {
+      body.innerHTML = `<tr><td colspan="8" class="empty">Belum ada jurnal penyesuaian.</td></tr>`;
+      totalElement.textContent = ERP.formatMoney(0);
+      return;
+    }
+
+    let html = "";
+    let total = 0;
+
+    adjustments.forEach((adjustment, index) => {
+      const debit = ERP.getAccountById(adjustment.debitAccountId);
+      const credit = ERP.getAccountById(adjustment.creditAccountId);
+      const amount = Number(adjustment.amount) || 0;
+
+      total += amount;
+
+      html += `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${ERP.formatDate(adjustment.date)}</td>
+          <td>${ERP.escapeHTML(adjustment.reference || "-")}</td>
+          <td>${debit ? ERP.escapeHTML(`${debit.code} - ${debit.name}`) : "-"}</td>
+          <td>${credit ? ERP.escapeHTML(`${credit.code} - ${credit.name}`) : "-"}</td>
+          <td class="number">${ERP.formatMoney(amount)}</td>
+          <td>${ERP.escapeHTML(adjustment.description || "-")}</td>
+          <td><button class="btn-delete" onclick="deleteAdjustment('${ERP.escapeHTML(adjustment.id)}')">Hapus</button></td>
+        </tr>
+      `;
+    });
+
+    body.innerHTML = html;
+    totalElement.textContent = ERP.formatMoney(total);
+  }
+
+  document.getElementById("adjustmentForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      showStatus("Tidak ada usaha aktif.", false);
+      return;
+    }
+
+    const date = document.getElementById("adjustmentDate").value;
+    const reference = document.getElementById("adjustmentReference").value.trim();
+    const debitAccountId = document.getElementById("debitAccount").value;
+    const creditAccountId = document.getElementById("creditAccount").value;
+    const amount = Number(document.getElementById("amount").value);
+    const description = document.getElementById("description").value.trim();
+
+    if (!date || !debitAccountId || !creditAccountId || !amount || amount <= 0 || !description) {
+      showStatus("Lengkapi semua data jurnal penyesuaian.", false);
+      return;
+    }
+
+    if (ERP.idEqual(debitAccountId, creditAccountId)) {
+      showStatus("Akun Debit dan Kredit tidak boleh sama.", false);
+      return;
+    }
+
+    const adjustments = ERP.getAdjustments();
+
+    const adjustment = {
+      id: ERP.newId("adj"),
+      businessId: business.id,
+      date,
+      reference: reference || "AJP-" + String(adjustments.length + 1).padStart(3, "0"),
+      debitAccountId,
+      creditAccountId,
+      amount,
+      description,
+      createdAt: new Date().toISOString()
+    };
+
+    adjustments.push(adjustment);
+    ERP.saveAdjustments(adjustments);
+
+    showStatus("Jurnal penyesuaian berhasil disimpan.", true);
+    resetForm();
+    renderAdjustments();
+  });
+
+  function deleteAdjustment(id) {
+    const confirmed = confirm("Yakin ingin menghapus jurnal penyesuaian ini?");
+    if (!confirmed) return;
+
+    const filtered = ERP.getAdjustments().filter(a => !ERP.idEqual(a.id, id));
+    ERP.saveAdjustments(filtered);
+
+    renderAdjustments();
+    showStatus("Jurnal penyesuaian berhasil dihapus.", true);
+  }
+
+  function resetForm() {
+    document.getElementById("adjustmentForm").reset();
+    document.getElementById("adjustmentDate").value = new Date().toISOString().split("T")[0];
+  }
+
+  function showStatus(message, success) {
+    const element = document.getElementById("formStatus");
+    element.style.display = "block";
+    element.style.color = success ? "#166534" : "#92400e";
+    element.style.background = success ? "var(--success-bg)" : "var(--warning-bg)";
+    element.style.borderColor = success ? "var(--success-border)" : "#fde68a";
+    element.textContent = message;
+
+    setTimeout(() => { element.style.display = "none"; }, 3000);
+  }
+
+  ERP.updateActiveBadge();
+  ERP.loadAccountDropdowns("debitAccount", "creditAccount");
+  resetForm();
+  renderAdjustments();
+
+</script>
+
+</body>
+</html>
