@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buku Besar - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Buku Besar</h1>
+          <p id="topbarSubtitle">Mutasi & saldo tiap akun (transaksi + jurnal penyesuaian)</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+      <div class="card">
+        <div class="actions-row">
+          <button class="btn-save" onclick="handleExport()">📊 Export Excel (semua akun)</button>
+        </div>
+      </div>
+      <div id="ledgerContainer"></div>
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "ledger",
+    title: "Buku Besar",
+    subtitle: "Mutasi & saldo tiap akun (transaksi + jurnal penyesuaian)"
+  });
+
+  function renderLedger() {
+    const container = document.getElementById("ledgerContainer");
+    container.innerHTML = "";
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty">Belum ada usaha aktif. Silakan buat usaha terlebih dahulu di <a href="business.html">Data Usaha</a>.</div>
+        </div>
+      `;
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+    const entries = ERP.getActiveJournalEntries();
+
+    if (accounts.length === 0) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty">Belum ada akun untuk usaha ini. Silakan buat akun di <a href="accounts.html">Chart of Accounts</a>.</div>
+        </div>
+      `;
+      return;
+    }
+
+    accounts
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
+      .forEach(account => {
+
+        let totalDebit = 0;
+        let totalCredit = 0;
+        let rows = "";
+
+        entries
+          .slice()
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .forEach(entry => {
+
+            const amount = Number(entry.amount) || 0;
+            const sourceLabel = entry.source === "Penyesuaian" ? "🛠️ AJP"
+              : entry.source === "PSAK 115" ? "📑 PSAK115"
+              : "🧾 Transaksi";
+
+            if (ERP.idEqual(entry.debitAccountId, account.id)) {
+              totalDebit += amount;
+              rows += `
+                <tr>
+                  <td>${ERP.escapeHTML(entry.date || "-")}</td>
+                  <td>${ERP.escapeHTML(entry.reference || "-")}</td>
+                  <td>${ERP.escapeHTML(entry.description || "-")}</td>
+                  <td>${sourceLabel}</td>
+                  <td class="debit">Debit</td>
+                  <td class="number">${ERP.formatMoney(amount)}</td>
+                  <td class="number">-</td>
+                </tr>
+              `;
+            }
+
+            if (ERP.idEqual(entry.creditAccountId, account.id)) {
+              totalCredit += amount;
+              rows += `
+                <tr>
+                  <td>${ERP.escapeHTML(entry.date || "-")}</td>
+                  <td>${ERP.escapeHTML(entry.reference || "-")}</td>
+                  <td>${ERP.escapeHTML(entry.description || "-")}</td>
+                  <td>${sourceLabel}</td>
+                  <td class="credit">Kredit</td>
+                  <td class="number">-</td>
+                  <td class="number">${ERP.formatMoney(amount)}</td>
+                </tr>
+              `;
+            }
+
+          });
+
+        const balance = account.normalBalance === "Debit"
+          ? totalDebit - totalCredit
+          : totalCredit - totalDebit;
+
+        if (rows === "") {
+          rows = `<tr><td colspan="7" class="empty">Belum ada transaksi untuk akun ini.</td></tr>`;
+        }
+
+        const card = document.createElement("div");
+        card.className = "account-card";
+
+        card.innerHTML = `
+          <div class="account-header">
+            <div>
+              <div class="account-name">${ERP.escapeHTML(account.name || "-")}</div>
+              <div class="account-code">Kode: ${ERP.escapeHTML(account.code || "-")} • ${ERP.escapeHTML(account.group || "-")} • Normal: ${ERP.escapeHTML(account.normalBalance || "-")}</div>
+            </div>
+            <div class="account-balance">
+              Saldo:
+              <span class="${account.normalBalance === "Debit" ? "text-debit" : "text-credit"}">${ERP.formatMoney(balance)}</span>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Ref.</th>
+                  <th>Keterangan</th>
+                  <th>Sumber</th>
+                  <th>Posisi</th>
+                  <th class="number">Debit</th>
+                  <th class="number">Kredit</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+                <tr class="total-row">
+                  <td colspan="5">TOTAL</td>
+                  <td class="number">${ERP.formatMoney(totalDebit)}</td>
+                  <td class="number">${ERP.formatMoney(totalCredit)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+  }
+
+  function handleExport() {
+    const business = ERP.getActiveBusiness();
+    const accounts = ERP.getActiveAccounts();
+    const entries = ERP.getActiveJournalEntries();
+
+    if (!business || accounts.length === 0) {
+      alert("Tidak ada data untuk diexport.");
+      return;
+    }
+
+    const sheets = [];
+
+    accounts
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
+      .forEach(account => {
+
+        let totalDebit = 0, totalCredit = 0;
+        const dataRows = [];
+
+        entries
+          .slice()
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .forEach(entry => {
+            const amount = Number(entry.amount) || 0;
+
+            if (ERP.idEqual(entry.debitAccountId, account.id)) {
+              totalDebit += amount;
+              dataRows.push([entry.date || "-", entry.reference || "-", entry.description || "-", entry.source || "-", "Debit", amount, ""]);
+            }
+            if (ERP.idEqual(entry.creditAccountId, account.id)) {
+              totalCredit += amount;
+              dataRows.push([entry.date || "-", entry.reference || "-", entry.description || "-", entry.source || "-", "Kredit", "", amount]);
+            }
+          });
+
+        const balance = account.normalBalance === "Debit" ? totalDebit - totalCredit : totalCredit - totalDebit;
+
+        const rows = [
+          [`${account.code} - ${account.name}`],
+          [`Kelompok: ${account.group} | Saldo Normal: ${account.normalBalance} | Saldo Akhir: ${balance}`],
+          [],
+          ["Tanggal", "Ref.", "Keterangan", "Sumber", "Posisi", "Debit", "Kredit"],
+          ...(dataRows.length ? dataRows : [["-", "-", "Belum ada transaksi", "-", "-", "", ""]]),
+          [],
+          ["", "", "", "", "TOTAL", totalDebit, totalCredit]
+        ];
+
+        sheets.push({
+          name: `${account.code} ${account.name}`,
+          rows,
+          colWidths: [12, 12, 28, 12, 10, 16, 16]
+        });
+      });
+
+    ERP.exportToExcel(`Buku-Besar-${business.name}.xlsx`, sheets);
+  }
+
+  renderLedger();
+
+</script>
+
+</body>
+</html>

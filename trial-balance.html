@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neraca Saldo (Setelah Penyesuaian) - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Neraca Saldo</h1>
+          <p id="topbarSubtitle">Trial Balance usaha aktif (sudah termasuk jurnal penyesuaian)</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div class="card">
+        <div id="balanceStatus" class="status-pill balance">Memeriksa saldo...</div>
+        <div class="actions-row" style="margin-top:14px">
+          <button class="btn-primary" onclick="renderTrialBalance()">🔄 Refresh</button>
+          <button class="btn-save" onclick="handleExport()">📊 Export Excel</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Kode Akun</th>
+                <th>Nama Akun</th>
+                <th class="number">Debit</th>
+                <th class="number">Kredit</th>
+              </tr>
+            </thead>
+            <tbody id="trialBalanceBody">
+              <tr><td colspan="5" class="empty">Memuat data...</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3">TOTAL</td>
+                <td class="number" id="totalDebit">Rp0</td>
+                <td class="number" id="totalCredit">Rp0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "trial-balance",
+    title: "Neraca Saldo",
+    subtitle: "Trial Balance usaha aktif (sudah termasuk jurnal penyesuaian)"
+  });
+
+  let exportRows = [];
+
+  function handleExport() {
+    const business = ERP.getActiveBusiness();
+    if (!business || exportRows.length === 0) {
+      alert("Tidak ada data untuk diexport.");
+      return;
+    }
+
+    const header = ["No", "Kode Akun", "Nama Akun", "Debit", "Kredit"];
+    const totalDebit = exportRows.reduce((s, r) => s + r[3], 0);
+    const totalCredit = exportRows.reduce((s, r) => s + r[4], 0);
+
+    const rows = [
+      [`Neraca Saldo (Setelah Penyesuaian) - ${business.name}`],
+      [`Tahun Buku ${business.period}`],
+      [],
+      header,
+      ...exportRows,
+      [],
+      ["", "", "TOTAL", totalDebit, totalCredit]
+    ];
+
+    ERP.exportToExcel(`Neraca-Saldo-${business.name}.xlsx`, [
+      { name: "Neraca Saldo", rows, colWidths: [5, 12, 30, 16, 16] }
+    ]);
+  }
+
+  function renderTrialBalance() {
+
+    const business = ERP.getActiveBusiness();
+    const body = document.getElementById("trialBalanceBody");
+    const totalDebitEl = document.getElementById("totalDebit");
+    const totalCreditEl = document.getElementById("totalCredit");
+    const status = document.getElementById("balanceStatus");
+
+    if (!business) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">Tidak ada usaha aktif.</td></tr>`;
+      totalDebitEl.textContent = ERP.formatMoney(0);
+      totalCreditEl.textContent = ERP.formatMoney(0);
+      status.className = "status-pill not-balance";
+      status.textContent = "⚠️ Tidak ada usaha aktif";
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+    const entries = ERP.getActiveJournalEntries();
+
+    if (accounts.length === 0) {
+      body.innerHTML = `<tr><td colspan="5" class="empty">Belum ada akun pada usaha ini.</td></tr>`;
+      totalDebitEl.textContent = ERP.formatMoney(0);
+      totalCreditEl.textContent = ERP.formatMoney(0);
+      status.className = "status-pill balance";
+      status.textContent = "✓ Saldo seimbang";
+      return;
+    }
+
+    const balances = {};
+    accounts.forEach(account => {
+      balances[String(account.id)] = { debit: 0, credit: 0 };
+    });
+
+    entries.forEach(entry => {
+      const amount = Number(entry.amount) || 0;
+
+      const debitId = String(entry.debitAccountId);
+      if (balances[debitId]) balances[debitId].debit += amount;
+
+      const creditId = String(entry.creditAccountId);
+      if (balances[creditId]) balances[creditId].credit += amount;
+    });
+
+    let html = "";
+    let grandDebit = 0;
+    let grandCredit = 0;
+    let number = 1;
+    exportRows = [];
+
+    accounts
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }))
+      .forEach(account => {
+
+        const balance = balances[String(account.id)] || { debit: 0, credit: 0 };
+        const netDebit = balance.debit - balance.credit;
+
+        let debitAmount = 0;
+        let creditAmount = 0;
+
+        if (netDebit > 0) debitAmount = netDebit;
+        else if (netDebit < 0) creditAmount = Math.abs(netDebit);
+
+        grandDebit += debitAmount;
+        grandCredit += creditAmount;
+
+        exportRows.push([number, account.code || "-", account.name || "-", debitAmount, creditAmount]);
+
+        html += `
+          <tr>
+            <td>${number++}</td>
+            <td>${ERP.escapeHTML(account.code || "-")}</td>
+            <td>${ERP.escapeHTML(account.name || "-")}</td>
+            <td class="number">${ERP.formatMoney(debitAmount)}</td>
+            <td class="number">${ERP.formatMoney(creditAmount)}</td>
+          </tr>
+        `;
+      });
+
+    body.innerHTML = html;
+    totalDebitEl.textContent = ERP.formatMoney(grandDebit);
+    totalCreditEl.textContent = ERP.formatMoney(grandCredit);
+
+    const difference = Math.abs(grandDebit - grandCredit);
+
+    if (difference < 0.01) {
+      status.className = "status-pill balance";
+      status.textContent = "✓ BALANCE — Debit dan Kredit seimbang";
+    } else {
+      status.className = "status-pill not-balance";
+      status.textContent = "⚠️ TIDAK BALANCE — Selisih " + ERP.formatMoney(difference);
+    }
+  }
+
+  renderTrialBalance();
+
+</script>
+
+</body>
+</html>
