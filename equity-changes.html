@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laporan Perubahan Ekuitas - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Laporan Perubahan Ekuitas</h1>
+          <p id="topbarSubtitle">Mutasi modal usaha aktif selama periode berjalan</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div class="card">
+        <div class="info-box">
+          Sistem ini mencatat seluruh riwayat sebagai satu periode berjalan (belum mengenal saldo awal dari
+          periode sebelumnya), jadi Modal Awal ditampilkan Rp0. Setoran dan penarikan dideteksi otomatis dari
+          setiap jurnal (transaksi/penyesuaian) yang menyentuh langsung akun Ekuitas.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrapper">
+          <table>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📜 Rincian Mutasi Akun Ekuitas</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>Tanggal</th><th>Referensi</th><th>Keterangan</th><th>Akun Ekuitas</th><th>Jenis</th><th class="number">Jumlah</th></tr>
+            </thead>
+            <tbody id="detailBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "equity-changes",
+    title: "Laporan Perubahan Ekuitas",
+    subtitle: "Mutasi modal usaha aktif selama periode berjalan"
+  });
+
+  function render() {
+    ERP.updateActiveBadge();
+
+    const business = ERP.getActiveBusiness();
+    const reportBody = document.getElementById("reportBody");
+    const detailBody = document.getElementById("detailBody");
+
+    if (!business) {
+      reportBody.innerHTML = `<tr><td class="empty">Belum ada usaha aktif.</td></tr>`;
+      detailBody.innerHTML = "";
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+    const equityAccounts = accounts.filter(a => ERP.EQUITY_GROUPS.includes(a.group));
+    const equityIds = equityAccounts.map(a => String(a.id));
+
+    const entries = ERP.getActiveJournalEntries();
+
+    let setoran = 0;
+    let penarikan = 0;
+    const detailRows = [];
+
+    entries.forEach(entry => {
+      const amount = Number(entry.amount) || 0;
+      const debitId = String(entry.debitAccountId);
+      const creditId = String(entry.creditAccountId);
+
+      if (equityIds.includes(creditId) && !equityIds.includes(debitId)) {
+        // Kredit ke Ekuitas (bukan sesama ekuitas) = setoran modal.
+        setoran += amount;
+        const account = ERP.getAccountById(creditId);
+        detailRows.push({ ...entry, equityAccount: account, kind: "Setoran (+)" });
+      } else if (equityIds.includes(debitId) && !equityIds.includes(creditId)) {
+        // Debit ke Ekuitas = penarikan / prive.
+        penarikan += amount;
+        const account = ERP.getAccountById(debitId);
+        detailRows.push({ ...entry, equityAccount: account, kind: "Penarikan (-)" });
+      }
+    });
+
+    const netBalance = ERP.computeAccountBalances(accounts, entries);
+    const totalRevenue = accounts
+      .filter(a => ERP.REVENUE_GROUPS.includes(a.group))
+      .reduce((sum, a) => sum + (netBalance[String(a.id)] || 0), 0);
+    const totalExpense = accounts
+      .filter(a => ERP.EXPENSE_GROUPS.includes(a.group))
+      .reduce((sum, a) => sum + (netBalance[String(a.id)] || 0), 0);
+    const netIncome = totalRevenue - totalExpense;
+
+    const modalAwal = 0;
+    const modalAkhir = modalAwal + setoran - penarikan + netIncome;
+
+    reportBody.innerHTML = `
+      <tr><td>Modal Awal Periode</td><td class="number">${ERP.formatMoney(modalAwal)}</td></tr>
+      <tr><td>(+) Setoran Modal selama periode</td><td class="number text-debit">${ERP.formatMoney(setoran)}</td></tr>
+      <tr><td>(-) Penarikan / Prive selama periode</td><td class="number text-credit">${ERP.formatMoney(penarikan)}</td></tr>
+      <tr><td>(${netIncome >= 0 ? "+" : "-"}) Laba (Rugi) Bersih Periode Berjalan</td><td class="number ${netIncome >= 0 ? "text-debit" : "text-credit"}">${ERP.formatMoney(netIncome)}</td></tr>
+      <tr class="total-row"><td>Modal Akhir Periode</td><td class="number">${ERP.formatMoney(modalAkhir)}</td></tr>
+    `;
+
+    if (equityAccounts.length === 0) {
+      detailBody.innerHTML = `<tr><td colspan="6" class="empty">Belum ada akun Ekuitas.</td></tr>`;
+    } else if (detailRows.length === 0) {
+      detailBody.innerHTML = `<tr><td colspan="6" class="empty">Belum ada mutasi langsung ke akun Ekuitas.</td></tr>`;
+    } else {
+      detailBody.innerHTML = detailRows
+        .slice()
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .map(row => `
+          <tr>
+            <td>${ERP.formatDate(row.date)}</td>
+            <td>${ERP.escapeHTML(row.reference || "-")}</td>
+            <td>${ERP.escapeHTML(row.description || "-")}</td>
+            <td>${row.equityAccount ? ERP.escapeHTML(`${row.equityAccount.code} - ${row.equityAccount.name}`) : "-"}</td>
+            <td>${row.kind}</td>
+            <td class="number">${ERP.formatMoney(row.amount)}</td>
+          </tr>
+        `).join("");
+    }
+  }
+
+  render();
+
+</script>
+
+</body>
+</html>

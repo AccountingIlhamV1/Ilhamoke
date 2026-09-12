@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laporan Arus Kas - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Laporan Arus Kas</h1>
+          <p id="topbarSubtitle">Metode langsung, berdasarkan akun yang ditandai Kas/Bank</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="emptyState" class="card" style="display:none">
+        <div class="empty" id="emptyMessage">Memuat data...</div>
+      </div>
+
+      <div id="mainContent" style="display:none">
+
+        <div class="card">
+          <div class="info-box">
+            Laporan ini dihitung dari setiap jurnal yang menyentuh akun bertanda 💰 Kas/Bank
+            (atur di <a href="accounts.html">Chart of Accounts</a>). Perpindahan antar akun Kas/Bank sendiri
+            (misal kas ke bank) tidak dihitung karena tidak mengubah total kas usaha.
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Aktivitas Operasi</div>
+          <div class="table-wrapper">
+            <table>
+              <tbody id="operatingBody"></tbody>
+              <tfoot><tr class="total-row"><td>Kas Bersih dari Aktivitas Operasi</td><td class="number" id="operatingTotal">Rp0</td></tr></tfoot>
+            </table>
+          </div>
+
+          <div class="section-title">Aktivitas Investasi</div>
+          <div class="table-wrapper">
+            <table>
+              <tbody id="investingBody"></tbody>
+              <tfoot><tr class="total-row"><td>Kas Bersih dari Aktivitas Investasi</td><td class="number" id="investingTotal">Rp0</td></tr></tfoot>
+            </table>
+          </div>
+
+          <div class="section-title">Aktivitas Pendanaan</div>
+          <div class="table-wrapper">
+            <table>
+              <tbody id="financingBody"></tbody>
+              <tfoot><tr class="total-row"><td>Kas Bersih dari Aktivitas Pendanaan</td><td class="number" id="financingTotal">Rp0</td></tr></tfoot>
+            </table>
+          </div>
+
+          <div class="summary-grid">
+            <div class="summary-box">
+              <span>Kenaikan (Penurunan) Kas Bersih</span>
+              <strong id="netChange">Rp0</strong>
+            </div>
+            <div class="summary-box">
+              <span>Saldo Kas Akhir (seluruh akun 💰)</span>
+              <strong id="endingCash">Rp0</strong>
+            </div>
+          </div>
+          <div id="checkStatus" class="status-pill balance" style="margin-top:10px"></div>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "cash-flow",
+    title: "Laporan Arus Kas",
+    subtitle: "Metode langsung, berdasarkan akun yang ditandai Kas/Bank"
+  });
+
+  function classify(group) {
+    if (ERP.CASHFLOW_OPERATING.includes(group)) return "operating";
+    if (ERP.CASHFLOW_INVESTING.includes(group)) return "investing";
+    if (ERP.CASHFLOW_FINANCING.includes(group)) return "financing";
+    return null;
+  }
+
+  function renderSection(bodyId, rows) {
+    const body = document.getElementById(bodyId);
+    if (rows.length === 0) {
+      body.innerHTML = `<tr><td class="empty" colspan="2">Belum ada aktivitas.</td></tr>`;
+      return 0;
+    }
+
+    // Gabungkan per akun lawan supaya ringkas.
+    const grouped = {};
+    rows.forEach(row => {
+      const key = row.label;
+      grouped[key] = (grouped[key] || 0) + row.amount;
+    });
+
+    let total = 0;
+    body.innerHTML = Object.keys(grouped).map(key => {
+      const value = grouped[key];
+      total += value;
+      return `
+        <tr>
+          <td>${value >= 0 ? "Penerimaan kas dari" : "Pembayaran kas untuk"} ${ERP.escapeHTML(key)}</td>
+          <td class="number ${value >= 0 ? "text-debit" : "text-credit"}">${ERP.formatMoney(value)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    return total;
+  }
+
+  function render() {
+    ERP.updateActiveBadge();
+
+    const business = ERP.getActiveBusiness();
+    const emptyState = document.getElementById("emptyState");
+    const emptyMessage = document.getElementById("emptyMessage");
+    const mainContent = document.getElementById("mainContent");
+
+    if (!business) {
+      mainContent.style.display = "none";
+      emptyState.style.display = "block";
+      emptyMessage.innerHTML = `Belum ada usaha aktif. Silakan buat usaha terlebih dahulu di <a href="business.html">Data Usaha</a>.`;
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+    const cashAccounts = accounts.filter(a => a.isCash);
+
+    if (cashAccounts.length === 0) {
+      mainContent.style.display = "none";
+      emptyState.style.display = "block";
+      emptyMessage.innerHTML = `Belum ada akun yang ditandai 💰 Kas/Bank. Tandai minimal satu akun (misal "Kas") di <a href="accounts.html">Chart of Accounts</a>.`;
+      return;
+    }
+
+    emptyState.style.display = "none";
+    mainContent.style.display = "block";
+
+    const cashIds = cashAccounts.map(a => String(a.id));
+    const entries = ERP.getActiveJournalEntries();
+
+    const operating = [], investing = [], financing = [];
+
+    entries.forEach(entry => {
+      const amount = Number(entry.amount) || 0;
+      const debitId = String(entry.debitAccountId);
+      const creditId = String(entry.creditAccountId);
+      const debitIsCash = cashIds.includes(debitId);
+      const creditIsCash = cashIds.includes(creditId);
+
+      if (debitIsCash === creditIsCash) return; // keduanya kas (transfer internal) atau keduanya bukan kas -> lewati
+
+      const cashIn = debitIsCash; // kas bertambah kalau kas ada di sisi Debit
+      const otherId = cashIn ? creditId : debitId;
+      const otherAccount = ERP.getAccountById(otherId);
+      if (!otherAccount) return;
+
+      const category = classify(otherAccount.group);
+      if (!category) return;
+
+      const row = {
+        label: `${otherAccount.code} - ${otherAccount.name}`,
+        amount: cashIn ? amount : -amount
+      };
+
+      if (category === "operating") operating.push(row);
+      else if (category === "investing") investing.push(row);
+      else financing.push(row);
+    });
+
+    const operatingTotal = renderSection("operatingBody", operating);
+    const investingTotal = renderSection("investingBody", investing);
+    const financingTotal = renderSection("financingBody", financing);
+
+    document.getElementById("operatingTotal").textContent = ERP.formatMoney(operatingTotal);
+    document.getElementById("investingTotal").textContent = ERP.formatMoney(investingTotal);
+    document.getElementById("financingTotal").textContent = ERP.formatMoney(financingTotal);
+
+    const netChange = operatingTotal + investingTotal + financingTotal;
+    document.getElementById("netChange").textContent = ERP.formatMoney(netChange);
+
+    const netBalance = ERP.computeAccountBalances(accounts, entries);
+    const endingCash = cashAccounts.reduce((sum, a) => sum + (netBalance[String(a.id)] || 0), 0);
+    document.getElementById("endingCash").textContent = ERP.formatMoney(endingCash);
+
+    const status = document.getElementById("checkStatus");
+    const difference = Math.abs(netChange - endingCash);
+
+    if (difference < 0.01) {
+      status.className = "status-pill balance";
+      status.textContent = "✓ COCOK — Kenaikan/penurunan kas sesuai saldo akhir kas";
+    } else {
+      status.className = "status-pill not-balance";
+      status.textContent = "⚠️ Ada selisih " + ERP.formatMoney(difference) + " — kemungkinan ada akun non-riil yang belum masuk salah satu kategori aktivitas";
+    }
+  }
+
+  render();
+
+</script>
+
+</body>
+</html>
