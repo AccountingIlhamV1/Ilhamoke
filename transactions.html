@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transaksi - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Transaksi</h1>
+          <p id="topbarSubtitle">Input transaksi dan pencatatan jurnal otomatis</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif.<br><br>
+        Silakan buat atau pilih usaha terlebih dahulu.<br><br>
+        <a href="business.html">Buka Data Usaha</a>
+      </div>
+
+      <div class="card">
+        <h2 id="formTitle">➕ Input Transaksi</h2>
+        <div id="statusMessage" class="status-line">Memuat data...</div>
+
+        <form id="transactionForm">
+
+          <div class="form-grid">
+            <div>
+              <label for="transactionDate">Tanggal</label>
+              <input type="date" id="transactionDate" required>
+            </div>
+            <div>
+              <label for="invoice">No. Invoice / Referensi</label>
+              <input type="text" id="invoice" placeholder="INV-001">
+            </div>
+          </div>
+
+          <label for="description">Keterangan</label>
+          <textarea id="description" required placeholder="Contoh: Pembelian perlengkapan secara tunai"></textarea>
+
+          <div class="form-grid">
+            <div>
+              <label for="debitAccount">Akun Debit</label>
+              <select id="debitAccount" required>
+                <option value="">-- Pilih Akun Debit --</option>
+              </select>
+            </div>
+            <div>
+              <label for="creditAccount">Akun Kredit</label>
+              <select id="creditAccount" required>
+                <option value="">-- Pilih Akun Kredit --</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="amount">Jumlah</label>
+          <input type="number" id="amount" min="0.01" step="0.01" required placeholder="0">
+
+          <button type="submit" class="btn-save" id="saveButton">Simpan Transaksi</button>
+          <button type="button" class="btn-cancel" id="cancelButton" style="display:none">Batal Edit</button>
+
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>📋 Daftar Transaksi</h2>
+        <p class="card-sub">Hanya transaksi milik usaha aktif yang ditampilkan.</p>
+
+        <div class="table-wrapper">
+          <table class="table-wide">
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Tanggal</th>
+                <th>Invoice</th>
+                <th>Keterangan</th>
+                <th>Debit</th>
+                <th>Kredit</th>
+                <th class="number">Jumlah</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="transactionTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "transactions",
+    title: "Transaksi",
+    subtitle: "Input transaksi dan pencatatan jurnal otomatis"
+  });
+
+  let editingId = null;
+
+  /* ===== DEFAULT TANGGAL ===== */
+
+  function setDefaultDate() {
+    const dateInput = document.getElementById("transactionDate");
+    if (!dateInput.value) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      dateInput.value = `${year}-${month}-${day}`;
+    }
+  }
+
+  /* ===== RESET FORM ===== */
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById("transactionForm").reset();
+    document.getElementById("formTitle").textContent = "➕ Input Transaksi";
+    document.getElementById("saveButton").textContent = "Simpan Transaksi";
+    document.getElementById("cancelButton").style.display = "none";
+    setDefaultDate();
+  }
+
+  document.getElementById("cancelButton").addEventListener("click", resetForm);
+
+  /* ===== SIMPAN TRANSAKSI ===== */
+
+  document.getElementById("transactionForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      alert("Buat atau pilih usaha terlebih dahulu.");
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+
+    if (accounts.length < 2) {
+      alert("Minimal harus ada 2 akun COA pada usaha aktif.");
+      return;
+    }
+
+    const date = document.getElementById("transactionDate").value;
+    const invoice = document.getElementById("invoice").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const debitAccount = document.getElementById("debitAccount").value;
+    const creditAccount = document.getElementById("creditAccount").value;
+    const amount = Number(document.getElementById("amount").value);
+
+    if (!date || !description || !debitAccount || !creditAccount || !amount || amount <= 0) {
+      alert("Lengkapi semua data transaksi.");
+      return;
+    }
+
+    if (ERP.idEqual(debitAccount, creditAccount)) {
+      alert("Akun Debit dan Kredit tidak boleh sama.");
+      return;
+    }
+
+    const debitExists = accounts.some(a => ERP.idEqual(a.id, debitAccount));
+    const creditExists = accounts.some(a => ERP.idEqual(a.id, creditAccount));
+
+    if (!debitExists || !creditExists) {
+      alert("Akun transaksi tidak valid.");
+      return;
+    }
+
+    const transactions = ERP.getTransactions();
+
+    if (editingId !== null) {
+
+      const index = transactions.findIndex(t => ERP.idEqual(t.id, editingId) && ERP.idEqual(t.businessId, business.id));
+
+      if (index < 0) {
+        alert("Transaksi tidak ditemukan.");
+        return;
+      }
+
+      transactions[index] = {
+        ...transactions[index],
+        date, invoice, description,
+        debitAccountId: debitAccount,
+        creditAccountId: creditAccount,
+        amount
+      };
+
+      alert("Transaksi berhasil diperbarui.");
+
+    } else {
+
+      transactions.push({
+        id: String(Date.now()),
+        businessId: business.id,
+        date, invoice, description,
+        debitAccountId: debitAccount,
+        creditAccountId: creditAccount,
+        amount,
+        createdAt: new Date().toISOString()
+      });
+
+      alert("Transaksi berhasil disimpan.");
+    }
+
+    ERP.saveTransactions(transactions);
+    resetForm();
+    render();
+  });
+
+  /* ===== EDIT TRANSAKSI ===== */
+
+  function editTransaction(id) {
+    const business = ERP.getActiveBusiness();
+    const transaction = ERP.getActiveTransactions().find(t => ERP.idEqual(t.id, id));
+
+    if (!business || !transaction) {
+      alert("Transaksi tidak ditemukan.");
+      return;
+    }
+
+    editingId = transaction.id;
+
+    document.getElementById("transactionDate").value = transaction.date || "";
+    document.getElementById("invoice").value = transaction.invoice || "";
+    document.getElementById("description").value = transaction.description || "";
+
+    // Pastikan dropdown terisi sebelum memilih akun.
+    ERP.loadAccountDropdowns("debitAccount", "creditAccount");
+
+    document.getElementById("debitAccount").value = transaction.debitAccountId || "";
+    document.getElementById("creditAccount").value = transaction.creditAccountId || "";
+    document.getElementById("amount").value = transaction.amount || "";
+
+    document.getElementById("formTitle").textContent = "✏️ Edit Transaksi";
+    document.getElementById("saveButton").textContent = "Update Transaksi";
+    document.getElementById("cancelButton").style.display = "inline-block";
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /* ===== HAPUS TRANSAKSI ===== */
+
+  function deleteTransaction(id) {
+    const business = ERP.getActiveBusiness();
+    if (!business) return;
+
+    const transactions = ERP.getTransactions();
+    const index = transactions.findIndex(t => ERP.idEqual(t.id, id) && ERP.idEqual(t.businessId, business.id));
+
+    if (index < 0) {
+      alert("Transaksi tidak ditemukan.");
+      return;
+    }
+
+    const transaction = transactions[index];
+    const confirmed = confirm(`Yakin ingin menghapus transaksi "${transaction.description}"?`);
+
+    if (!confirmed) return;
+
+    transactions.splice(index, 1);
+    ERP.saveTransactions(transactions);
+
+    if (ERP.idEqual(editingId, id)) resetForm();
+
+    render();
+  }
+
+  /* ===== RENDER ===== */
+
+  function renderActiveBusiness() {
+    const business = ERP.getActiveBusiness();
+    const warning = document.getElementById("noBusinessWarning");
+    const status = document.getElementById("statusMessage");
+
+    ERP.updateActiveBadge();
+
+    if (!business) {
+      warning.style.display = "block";
+      status.textContent = "Buat atau pilih usaha terlebih dahulu.";
+      return;
+    }
+
+    warning.style.display = "none";
+    status.textContent = `Usaha aktif: ${business.name} | COA tersedia: ${ERP.getActiveAccounts().length} akun`;
+  }
+
+  function render() {
+    renderActiveBusiness();
+    ERP.loadAccountDropdowns("debitAccount", "creditAccount");
+
+    const table = document.getElementById("transactionTable");
+    const transactions = ERP.getActiveTransactions()
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+    table.innerHTML = "";
+
+    if (transactions.length === 0) {
+      table.innerHTML = `<tr><td colspan="8" class="empty">Belum ada transaksi untuk usaha aktif.</td></tr>`;
+      return;
+    }
+
+    transactions.forEach((transaction, index) => {
+      const debit = ERP.getAccountById(transaction.debitAccountId);
+      const credit = ERP.getAccountById(transaction.creditAccountId);
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${ERP.escapeHTML(transaction.date)}</td>
+        <td>${ERP.escapeHTML(transaction.invoice || "-")}</td>
+        <td>${ERP.escapeHTML(transaction.description)}</td>
+        <td class="debit">${debit ? `${ERP.escapeHTML(debit.code)} - ${ERP.escapeHTML(debit.name)}` : "-"}</td>
+        <td class="credit">${credit ? `${ERP.escapeHTML(credit.code)} - ${ERP.escapeHTML(credit.name)}` : "-"}</td>
+        <td class="number">${ERP.formatMoney(transaction.amount)}</td>
+        <td>
+          <button class="btn-edit" onclick="editTransaction('${ERP.escapeHTML(transaction.id)}')">✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteTransaction('${ERP.escapeHTML(transaction.id)}')">🗑️ Hapus</button>
+        </td>
+      `;
+
+      table.appendChild(row);
+    });
+  }
+
+  setDefaultDate();
+  render();
+
+</script>
+
+</body>
+</html>
