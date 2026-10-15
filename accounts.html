@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chart of Accounts - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Chart of Accounts</h1>
+          <p id="topbarSubtitle">Daftar akun berdasarkan usaha yang sedang aktif</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif.<br><br>
+        Silakan buat atau pilih usaha terlebih dahulu.<br><br>
+        <a href="business.html">Buka Data Usaha</a>
+      </div>
+
+
+      <div class="card">
+        <h2>⚡ Isi COA Otomatis</h2>
+        <p class="card-sub">Pilih jenis usaha, lalu klik tombol. Ratusan akun standar langsung terisi lengkap dengan kode, kelompok, saldo normal, dan penanda Kas/Bank. Akun yang namanya sudah ada tidak diduplikasi, dan kalau kodenya bentrok, akun baru otomatis diberi kode kosong berikutnya.</p>
+
+        <div class="form-grid">
+          <div>
+            <label for="templateType">Jenis Usaha</label>
+            <select id="templateType">
+              <option value="lengkap">Lengkap (semua jenis usaha digabung)</option>
+              <option value="jasa">Usaha Jasa</option>
+              <option value="dagang">Usaha Dagang</option>
+              <option value="manufaktur">Usaha Manufaktur</option>
+              <option value="konstruksi">Kontrak / Konstruksi (PSAK 115)</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button type="button" class="btn-save" id="loadTemplateButton">⚡ Muat Template COA</button>
+          </div>
+        </div>
+        <div id="templatePreview" class="status-line" style="margin-top:10px"></div>
+
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer">👀 Lihat daftar akun template</summary>
+          <div class="table-wrapper" style="margin-top:8px">
+            <table class="table-wide">
+              <thead><tr><th>Kode</th><th>Nama Akun</th><th>Kelompok</th><th>Saldo Normal</th></tr></thead>
+              <tbody id="templateList"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2 id="formTitle">➕ Tambah Akun</h2>
+        <div id="statusMessage" class="status-line">Memuat data...</div>
+
+        <form id="accountForm">
+
+          <div class="form-grid">
+            <div>
+              <label for="accountCode">Kode Akun</label>
+              <input type="text" id="accountCode" required placeholder="1101">
+            </div>
+            <div>
+              <label for="accountName">Nama Akun</label>
+              <input type="text" id="accountName" required placeholder="Kas">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="accountGroup">Kelompok Akun</label>
+              <select id="accountGroup" required>
+                <option value="">-- Pilih Kelompok --</option>
+                <option value="Aset Lancar">Aset Lancar</option>
+                <option value="Aset Tetap">Aset Tetap</option>
+                <option value="Aset Lainnya">Aset Lainnya</option>
+                <option value="Liabilitas Jangka Pendek">Liabilitas Jangka Pendek</option>
+                <option value="Liabilitas Jangka Panjang">Liabilitas Jangka Panjang</option>
+                <option value="Ekuitas">Ekuitas</option>
+                <option value="Pendapatan">Pendapatan</option>
+                <option value="Beban">Beban</option>
+              </select>
+            </div>
+            <div>
+              <label for="normalBalance">Saldo Normal</label>
+              <select id="normalBalance" required>
+                <option value="">-- Pilih Saldo Normal --</option>
+                <option value="Debit">Debit</option>
+                <option value="Kredit">Kredit</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group full" style="margin-top:10px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="isCash" style="width:auto">
+              💰 Ini akun Kas / Bank (dipakai untuk Laporan Arus Kas)
+            </label>
+          </div>
+
+          <button type="submit" class="btn-save" id="saveButton">Simpan Akun</button>
+          <button type="button" class="btn-cancel" id="cancelButton" style="display:none">Batal Edit</button>
+
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>📋 Daftar Chart of Accounts</h2>
+        <p class="card-sub">Hanya akun milik usaha aktif yang ditampilkan.</p>
+
+        <div class="table-wrapper">
+          <table class="table-wide">
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Kode</th>
+                <th>Nama Akun</th>
+                <th>Kelompok</th>
+                <th>Saldo Normal</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="accountTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "accounts",
+    title: "Chart of Accounts",
+    subtitle: "Daftar akun berdasarkan usaha yang sedang aktif"
+  });
+
+  let editingId = null;
+
+  /* ===== SIMPAN AKUN ===== */
+
+  document.getElementById("accountForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      alert("Buat atau pilih usaha terlebih dahulu.");
+      return;
+    }
+
+    const code = document.getElementById("accountCode").value.trim();
+    const name = document.getElementById("accountName").value.trim();
+    const group = document.getElementById("accountGroup").value;
+    const normalBalance = document.getElementById("normalBalance").value;
+    const isCash = document.getElementById("isCash").checked;
+
+    if (!code || !name || !group || !normalBalance) {
+      alert("Semua data akun wajib diisi.");
+      return;
+    }
+
+    const accounts = ERP.getAccounts();
+
+    const duplicate = accounts.some(account =>
+      ERP.idEqual(account.businessId, business.id) &&
+      String(account.code).toLowerCase() === code.toLowerCase() &&
+      !ERP.idEqual(account.id, editingId)
+    );
+
+    if (duplicate) {
+      alert("Kode akun tersebut sudah digunakan pada usaha aktif.");
+      return;
+    }
+
+    if (editingId !== null) {
+
+      const index = accounts.findIndex(a => ERP.idEqual(a.id, editingId));
+
+      if (index < 0 || !ERP.idEqual(accounts[index].businessId, business.id)) {
+        alert("Akun tidak ditemukan pada usaha aktif.");
+        return;
+      }
+
+      accounts[index] = { ...accounts[index], code, name, group, normalBalance, isCash };
+      alert("Akun berhasil diperbarui.");
+
+    } else {
+
+      accounts.push({
+        id: String(Date.now()),
+        businessId: business.id,
+        code,
+        name,
+        group,
+        normalBalance,
+        isCash,
+        createdAt: new Date().toISOString()
+      });
+
+      alert("Akun berhasil disimpan.");
+    }
+
+    ERP.saveAccounts(accounts);
+    resetForm();
+    render();
+  });
+
+  /* ===== EDIT AKUN ===== */
+
+  function editAccount(id) {
+    const business = ERP.getActiveBusiness();
+    const account = ERP.getActiveAccounts().find(a => ERP.idEqual(a.id, id));
+
+    if (!business || !account) {
+      alert("Akun tidak ditemukan pada usaha aktif.");
+      return;
+    }
+
+    editingId = account.id;
+
+    document.getElementById("accountCode").value = account.code || "";
+    document.getElementById("accountName").value = account.name || "";
+    document.getElementById("accountGroup").value = account.group || "";
+    document.getElementById("normalBalance").value = account.normalBalance || "";
+    document.getElementById("isCash").checked = !!account.isCash;
+
+    document.getElementById("formTitle").textContent = "✏️ Edit Akun";
+    document.getElementById("saveButton").textContent = "Update Akun";
+    document.getElementById("cancelButton").style.display = "inline-block";
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /* ===== HAPUS AKUN ===== */
+
+  function deleteAccount(id) {
+    const business = ERP.getActiveBusiness();
+    if (!business) return;
+
+    const accounts = ERP.getAccounts();
+
+    const index = accounts.findIndex(a => ERP.idEqual(a.id, id) && ERP.idEqual(a.businessId, business.id));
+
+    if (index < 0) {
+      alert("Akun tidak ditemukan pada usaha aktif.");
+      return;
+    }
+
+    const account = accounts[index];
+    const confirmed = confirm(`Yakin ingin menghapus akun "${account.code} - ${account.name}"?`);
+
+    if (!confirmed) return;
+
+    accounts.splice(index, 1);
+    ERP.saveAccounts(accounts);
+
+    if (ERP.idEqual(editingId, id)) resetForm();
+
+    render();
+  }
+
+  document.getElementById("cancelButton").addEventListener("click", resetForm);
+
+  /* ===== RESET FORM ===== */
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById("accountForm").reset();
+    document.getElementById("isCash").checked = false;
+    document.getElementById("formTitle").textContent = "➕ Tambah Akun";
+    document.getElementById("saveButton").textContent = "Simpan Akun";
+    document.getElementById("cancelButton").style.display = "none";
+  }
+
+  /* ===== RENDER ===== */
+
+  function renderActive() {
+    const business = ERP.getActiveBusiness();
+    const warning = document.getElementById("noBusinessWarning");
+    const status = document.getElementById("statusMessage");
+
+    ERP.updateActiveBadge();
+
+    if (!business) {
+      warning.style.display = "block";
+      status.textContent = "Buat atau pilih usaha terlebih dahulu.";
+      return;
+    }
+
+    warning.style.display = "none";
+    status.textContent = `COA untuk usaha aktif: ${business.name} (${ERP.getActiveAccounts().length} akun)`;
+  }
+
+  function render() {
+    renderActive();
+    if (typeof updateTemplatePreview === "function") updateTemplatePreview();
+
+    const table = document.getElementById("accountTable");
+    const accounts = ERP.getActiveAccounts()
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+
+    table.innerHTML = "";
+
+    if (accounts.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" class="empty">Belum ada COA untuk usaha aktif.</td></tr>`;
+      return;
+    }
+
+    accounts.forEach((account, index) => {
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td><strong>${ERP.escapeHTML(account.code)}</strong></td>
+        <td>${ERP.escapeHTML(account.name)}${account.isCash ? ' <span title="Akun Kas/Bank">💰</span>' : ''}</td>
+        <td>${ERP.escapeHTML(account.group)}</td>
+        <td>${ERP.escapeHTML(account.normalBalance)}</td>
+        <td>
+          <button class="btn-edit" onclick="editAccount('${ERP.escapeHTML(account.id)}')">✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteAccount('${ERP.escapeHTML(account.id)}')">🗑️ Hapus</button>
+        </td>
+      `;
+
+      table.appendChild(row);
+    });
+  }
+
+
+  /* =====================================================
+     COA OTOMATIS
+     1) Template lengkap per jenis usaha (tombol "Muat Template COA")
+     2) Isi otomatis di form manual: saldo normal, saran kode,
+        penanda Kas/Bank, dan deteksi akun kontra.
+  ===================================================== */
+
+  // Format item: "kode|Nama Akun". Awalan nama: * = akun Kas/Bank, - = akun kontra (saldo normal dibalik).
+  const COA_DATA = {
+    base: [
+      ["Aset Lancar", [
+        "1101|*Kas", "1102|*Bank", "1103|Piutang Usaha", "1104|Perlengkapan",
+        "1105|Sewa Dibayar di Muka", "1106|Asuransi Dibayar di Muka",
+        "1109|*Kas Kecil", "1114|*Dompet Digital (E-Wallet)", "1115|*Deposito Berjangka (≤ 3 Bulan)",
+        "1116|Investasi Jangka Pendek", "1117|Piutang Wesel", "1118|-Cadangan Kerugian Piutang",
+        "1119|Piutang Karyawan", "1120|Piutang Pemilik", "1121|Piutang Pihak Berelasi",
+        "1122|Piutang Bunga", "1123|Piutang Lain-lain", "1124|Pendapatan yang Masih Harus Diterima",
+        "1125|Uang Muka Pembelian", "1126|Uang Muka Operasional", "1128|Iklan Dibayar di Muka",
+        "1130|PPN Masukan", "1131|PPh Dibayar di Muka (PPh 22/23/25)"
+      ]],
+      ["Aset Tetap", [
+        "1201|Peralatan", "1202|-Akumulasi Penyusutan Peralatan",
+        "1203|Kendaraan", "1204|-Akumulasi Penyusutan Kendaraan",
+        "1205|Gedung", "1206|-Akumulasi Penyusutan Gedung",
+        "1207|Tanah",
+        "1208|Mesin dan Peralatan Pabrik", "1209|-Akumulasi Penyusutan Mesin dan Peralatan Pabrik",
+        "1210|Peralatan Kantor", "1211|-Akumulasi Penyusutan Peralatan Kantor",
+        "1212|Furnitur dan Perabot", "1213|-Akumulasi Penyusutan Furnitur dan Perabot",
+        "1214|Komputer dan Perangkat IT", "1215|-Akumulasi Penyusutan Komputer dan Perangkat IT",
+        "1216|Alat Berat", "1217|-Akumulasi Penyusutan Alat Berat",
+        "1218|Perbaikan Bangunan Sewa", "1219|-Akumulasi Amortisasi Perbaikan Bangunan Sewa",
+        "1220|Aset Hak Guna (Sewa)", "1221|-Akumulasi Penyusutan Aset Hak Guna",
+        "1222|Aset Tetap dalam Pembangunan"
+      ]],
+      ["Aset Lainnya", [
+        "1301|Hak Paten", "1302|Merek Dagang", "1303|Hak Cipta", "1304|Waralaba (Franchise)",
+        "1305|Perangkat Lunak", "1306|Goodwill", "1307|-Akumulasi Amortisasi Aset Tak Berwujud",
+        "1308|Investasi Saham Jangka Panjang", "1309|Investasi Obligasi Jangka Panjang",
+        "1310|Properti Investasi", "1311|-Akumulasi Penyusutan Properti Investasi",
+        "1312|Deposito Jangka Panjang", "1313|Piutang Jangka Panjang", "1314|Uang Jaminan",
+        "1315|Aset Pajak Tangguhan", "1316|Aset Lain-lain"
+      ]],
+      ["Liabilitas Jangka Pendek", [
+        "2101|Utang Usaha", "2102|Utang Gaji", "2103|Pendapatan Diterima di Muka", "2104|Utang Pajak",
+        "2105|Utang Wesel", "2106|Utang Bunga", "2107|Utang PPh 21", "2108|Utang PPh 23",
+        "2109|Utang PPh 25", "2110|Utang PPh 4(2) Final", "2111|Utang PPh 29", "2112|PPN Keluaran",
+        "2113|Utang BPJS Kesehatan", "2114|Utang BPJS Ketenagakerjaan", "2115|Utang Komisi",
+        "2116|Utang THR dan Bonus", "2117|Beban yang Masih Harus Dibayar", "2118|Uang Muka Pelanggan",
+        "2119|Utang Pemilik", "2120|Utang Pihak Berelasi", "2121|Utang Dividen", "2122|Utang Kartu Kredit",
+        "2123|Bagian Lancar Utang Jangka Panjang", "2124|Bagian Lancar Liabilitas Sewa",
+        "2126|Utang Barang Diterima Belum Ditagih", "2127|Utang Lain-lain"
+      ]],
+      ["Liabilitas Jangka Panjang", [
+        "2201|Utang Bank", "2202|Utang Hipotek", "2203|Utang Obligasi", "2204|-Diskonto Utang Obligasi",
+        "2205|Utang Pemegang Saham", "2206|Utang Pihak Berelasi Jangka Panjang",
+        "2207|Liabilitas Sewa Jangka Panjang", "2208|Liabilitas Imbalan Kerja Jangka Panjang",
+        "2209|Liabilitas Pajak Tangguhan", "2210|Provisi Jangka Panjang", "2211|Utang Jangka Panjang Lainnya"
+      ]],
+      ["Ekuitas", [
+        "3101|Modal", "3102|-Prive", "3103|Modal Saham Biasa", "3104|Modal Saham Preferen",
+        "3105|Tambahan Modal Disetor (Agio Saham)", "3106|-Saham Treasuri", "3107|Saldo Laba Ditahan",
+        "3108|Saldo Laba Dicadangkan", "3109|-Dividen", "3110|Surplus Revaluasi Aset Tetap",
+        "3111|Penghasilan Komprehensif Lain"
+      ]],
+      ["Pendapatan", [
+        "4201|Pendapatan Bunga", "4202|Pendapatan Jasa Giro", "4203|Pendapatan Sewa", "4204|Pendapatan Dividen",
+        "4205|Pendapatan Komisi", "4206|Laba Penjualan Aset Tetap", "4207|Laba Selisih Kurs",
+        "4208|Pendapatan Denda dan Administrasi", "4209|Pendapatan Hibah dan Donasi",
+        "4210|Laba Penjualan Investasi", "4211|Keuntungan Penyesuaian Nilai Wajar",
+        "4212|Pemulihan Cadangan Kerugian Piutang", "4213|Pendapatan Lain-lain"
+      ]],
+      ["Beban", [
+        "5101|Beban Gaji", "5102|Beban Sewa", "5103|Beban Listrik, Air, dan Telepon", "5104|Beban Perlengkapan",
+        "5105|Beban Penyusutan", "5106|Beban Asuransi", "5107|Beban Lain-lain",
+        "5110|Beban Upah dan Lembur", "5111|Beban Tunjangan Karyawan", "5112|Beban Bonus dan THR",
+        "5113|Beban BPJS Kesehatan", "5114|Beban BPJS Ketenagakerjaan", "5115|Beban Imbalan Kerja",
+        "5116|Beban Pesangon", "5117|Beban Pelatihan dan Pengembangan", "5118|Beban Komisi Penjualan",
+        "5119|Beban Listrik", "5120|Beban Air", "5121|Beban Telepon dan Internet",
+        "5122|Beban Penyusutan Gedung", "5123|Beban Penyusutan Kendaraan", "5124|Beban Penyusutan Peralatan",
+        "5125|Beban Penyusutan Mesin dan Peralatan Pabrik", "5126|Beban Penyusutan Peralatan Kantor",
+        "5127|Beban Penyusutan Furnitur dan Perabot", "5128|Beban Penyusutan Komputer dan Perangkat IT",
+        "5129|Beban Penyusutan Alat Berat", "5130|Beban Penyusutan Aset Hak Guna",
+        "5131|Beban Amortisasi Aset Tak Berwujud", "5132|Beban Iklan dan Promosi",
+        "5133|Beban Pemeliharaan dan Perbaikan", "5134|Beban Bahan Bakar dan Transportasi",
+        "5135|Beban Perjalanan Dinas", "5136|Beban Alat Tulis dan Percetakan", "5137|Beban Konsumsi dan Rapat",
+        "5138|Beban Kebersihan dan Keamanan", "5139|Beban Pajak dan Retribusi", "5140|Beban Perizinan",
+        "5141|Beban Jasa Profesional", "5142|Beban Piutang Tak Tertagih", "5143|Beban Penurunan Nilai Persediaan",
+        "5144|Beban Administrasi Bank", "5145|Beban Langganan dan Lisensi Software",
+        "5146|Beban Representasi dan Jamuan", "5147|Beban Donasi dan Sumbangan", "5148|Beban Kemasan",
+        "5201|Beban Bunga", "5202|Beban Administrasi Kredit", "5203|Rugi Penjualan Aset Tetap",
+        "5204|Rugi Selisih Kurs", "5205|Rugi Penurunan Nilai Aset", "5206|Rugi Kehilangan dan Bencana",
+        "5207|Denda dan Sanksi Pajak", "5208|Rugi Penjualan Investasi", "5209|Beban Lain-lain Non-Operasional",
+        "5251|Beban Pajak Penghasilan Kini", "5252|Beban Pajak Tangguhan", "5253|Beban Pajak Final"
+      ]]
+    ],
+
+    jasa: [
+      ["Pendapatan", ["4101|Pendapatan Jasa", "4151|Pendapatan Jasa Konsultasi", "4152|Pendapatan Langganan", "4153|Pendapatan Pelatihan"]],
+      ["Beban", ["5031|Beban Pokok Jasa", "5032|Beban Tenaga Ahli dan Freelance", "5033|Beban Langsung Proyek Jasa"]]
+    ],
+
+    dagang: [
+      ["Aset Lancar", ["1107|Persediaan Barang Dagang", "1140|Persediaan Barang dalam Perjalanan", "1141|Perlengkapan Toko"]],
+      ["Pendapatan", ["4101|Penjualan", "4111|Penjualan Online (Marketplace)", "4112|Penjualan Grosir"]],
+      ["Beban", ["5001|Harga Pokok Penjualan", "5002|Pembelian", "5003|Beban Angkut Pembelian", "5004|Selisih Persediaan", "5108|Beban Pengiriman"]]
+    ],
+
+    manufaktur: [
+      ["Aset Lancar", ["1150|Persediaan Bahan Baku", "1151|Persediaan Bahan Penolong", "1152|Persediaan Barang dalam Proses", "1153|Persediaan Barang Jadi", "1154|Persediaan Suku Cadang"]],
+      ["Pendapatan", ["4121|Penjualan Produk Jadi", "4122|Penjualan Produk Sampingan", "4123|Penjualan Sisa Bahan (Scrap)"]],
+      ["Beban", ["5011|Harga Pokok Penjualan", "5012|Harga Pokok Produksi", "5013|Biaya Bahan Baku", "5014|Biaya Bahan Penolong", "5015|Biaya Tenaga Kerja Langsung", "5016|Biaya Tenaga Kerja Tidak Langsung", "5017|Biaya Overhead Pabrik", "5018|Beban Listrik Pabrik", "5019|Beban Pemeliharaan Mesin Pabrik"]]
+    ],
+
+    konstruksi: [
+      ["Aset Lancar", ["1107|Piutang Kontrak", "1108|Uang Muka Proyek", "1160|Aset Kontrak", "1161|Piutang Retensi", "1162|Pekerjaan dalam Penyelesaian"]],
+      ["Liabilitas Jangka Pendek", ["2150|Utang Retensi", "2151|Liabilitas Kontrak", "2152|Utang Subkontraktor", "2153|Uang Muka dari Pemberi Kerja"]],
+      ["Pendapatan", ["4101|Pendapatan Kontrak", "4131|Pendapatan Pekerjaan Tambah (Variation Order)", "4132|Pendapatan Jasa Konsultasi Teknik"]],
+      ["Beban", ["5001|Beban Pokok Kontrak", "5021|Beban Material Proyek", "5022|Beban Upah Proyek", "5023|Beban Sewa Alat Berat", "5024|Beban Overhead Proyek", "5025|Beban Garansi dan Pemeliharaan Proyek", "5026|Beban Mobilisasi dan Demobilisasi", "5108|Beban Subkontraktor"]]
+    ]
+  };
+
+  const COA_TYPES = {
+    jasa: ["base", "jasa"],
+    dagang: ["base", "dagang"],
+    manufaktur: ["base", "manufaktur"],
+    konstruksi: ["base", "konstruksi"],
+    lengkap: ["base", "jasa", "dagang", "manufaktur", "konstruksi"]
+  };
+
+  function parseCoaItems(group, items) {
+    const debitGroup = group === "Beban" || group.startsWith("Aset");
+    return items.map(function (raw) {
+      const parts = raw.split("|");
+      let name = parts[1], isCash = false, contra = false;
+      if (name.charAt(0) === "*") { isCash = true; name = name.slice(1); }
+      else if (name.charAt(0) === "-") { contra = true; name = name.slice(1); }
+      let normal = debitGroup ? "Debit" : "Kredit";
+      if (contra) normal = normal === "Debit" ? "Kredit" : "Debit";
+      return { code: parts[0], name: name, group: group, normalBalance: normal, isCash: isCash };
+    });
+  }
+
+  // Gabungkan bagian template; nama kembar hanya dimasukkan sekali.
+  function getTemplate(type) {
+    const seen = new Set();
+    const result = [];
+    (COA_TYPES[type] || []).forEach(function (key) {
+      COA_DATA[key].forEach(function (section) {
+        parseCoaItems(section[0], section[1]).forEach(function (item) {
+          const k = item.name.toLowerCase();
+          if (seen.has(k)) return;
+          seen.add(k);
+          result.push(item);
+        });
+      });
+    });
+    return result.sort(function (a, b) {
+      return a.code.localeCompare(b.code, undefined, { numeric: true });
+    });
+  }
+
+  // Hitung apa yang akan ditambah / dilewati untuk usaha aktif.
+  // - nama sudah ada            -> dilewati
+  // - kode sudah dipakai akun lain -> akun baru dapat kode kosong berikutnya
+  function planTemplate(type) {
+    const existing = ERP.getActiveAccounts();
+    const usedCodes = new Set(existing.map(function (a) { return String(a.code).toLowerCase(); }));
+    const usedNames = new Set(existing.map(function (a) { return String(a.name).trim().toLowerCase(); }));
+    const toAdd = [], skipped = [];
+    let reassigned = 0;
+
+    getTemplate(type).forEach(function (t) {
+      if (usedNames.has(t.name.toLowerCase())) { skipped.push(t); return; }
+
+      let code = t.code;
+      while (usedCodes.has(code.toLowerCase())) code = String(Number(code) + 1);
+      if (code !== t.code) reassigned++;
+
+      usedCodes.add(code.toLowerCase());
+      usedNames.add(t.name.toLowerCase());
+      toAdd.push({ code: code, name: t.name, group: t.group, normalBalance: t.normalBalance, isCash: t.isCash });
+    });
+
+    return { toAdd: toAdd, skipped: skipped, reassigned: reassigned };
+  }
+
+  function renderTemplateList(type) {
+    const body = document.getElementById("templateList");
+    body.innerHTML = getTemplate(type).map(function (t) {
+      return "<tr><td><strong>" + ERP.escapeHTML(t.code) + "</strong></td><td>" +
+        ERP.escapeHTML(t.name) + (t.isCash ? " 💰" : "") + "</td><td>" +
+        ERP.escapeHTML(t.group) + "</td><td>" + ERP.escapeHTML(t.normalBalance) + "</td></tr>";
+    }).join("");
+  }
+
+  function updateTemplatePreview() {
+    const box = document.getElementById("templatePreview");
+    const type = document.getElementById("templateType").value;
+    renderTemplateList(type);
+
+    const business = ERP.getActiveBusiness();
+    if (!business) { box.textContent = "Buat atau pilih usaha terlebih dahulu."; return; }
+
+    const plan = planTemplate(type);
+    box.textContent = "Template berisi " + getTemplate(type).length + " akun: " + plan.toAdd.length +
+      " akan ditambahkan, " + plan.skipped.length + " dilewati karena namanya sudah ada" +
+      (plan.reassigned ? ", " + plan.reassigned + " diberi kode lain karena kodenya sudah terpakai." : ".");
+  }
+
+  document.getElementById("templateType").addEventListener("change", updateTemplatePreview);
+
+  document.getElementById("loadTemplateButton").addEventListener("click", function () {
+    const business = ERP.getActiveBusiness();
+    if (!business) { alert("Buat atau pilih usaha terlebih dahulu."); return; }
+
+    const type = document.getElementById("templateType").value;
+    const plan = planTemplate(type);
+
+    if (plan.toAdd.length === 0) {
+      alert("Semua akun template sudah ada di COA usaha ini. Tidak ada yang ditambahkan.");
+      return;
+    }
+
+    const msg = "Tambahkan " + plan.toAdd.length + " akun ke COA \"" + business.name + "\"?\n" +
+      "(" + plan.skipped.length + " akun dilewati karena namanya sudah ada" +
+      (plan.reassigned ? "; " + plan.reassigned + " akun diberi kode lain karena kodenya bentrok" : "") + ".)";
+    if (!confirm(msg)) return;
+
+    const accounts = ERP.getAccounts();
+    const now = Date.now();
+
+    plan.toAdd.forEach(function (t, i) {
+      accounts.push({
+        id: String(now + i),
+        businessId: business.id,
+        code: t.code,
+        name: t.name,
+        group: t.group,
+        normalBalance: t.normalBalance,
+        isCash: t.isCash,
+        createdAt: new Date().toISOString()
+      });
+    });
+
+    ERP.saveAccounts(accounts);
+    render();
+    alert(plan.toAdd.length + " akun berhasil ditambahkan.");
+  });
+
+  /* ----- Isi otomatis di form manual ----- */
+
+  const GROUP_PREFIX = {
+    "Aset Lancar": "11", "Aset Tetap": "12", "Aset Lainnya": "13",
+    "Liabilitas Jangka Pendek": "21", "Liabilitas Jangka Panjang": "22",
+    "Ekuitas": "31", "Pendapatan": "41", "Beban": "51"
+  };
+
+  let codeAutoFilled = false;
+  let balanceAutoSet = false;
+
+  function suggestNextCode(group) {
+    const prefix = GROUP_PREFIX[group];
+    if (!prefix) return "";
+    const nums = ERP.getActiveAccounts()
+      .map(function (a) { return String(a.code); })
+      .filter(function (c) { return /^\d{4}$/.test(c) && c.indexOf(prefix) === 0; })
+      .map(Number);
+    return String(nums.length ? Math.max.apply(null, nums) + 1 : Number(prefix + "01"));
+  }
+
+  function defaultNormal(group, name) {
+    const debitGroup = group === "Beban" || group.indexOf("Aset") === 0;
+    let normal = debitGroup ? "Debit" : "Kredit";
+    const n = String(name || "").trim().toLowerCase();
+    if (group.indexOf("Aset") === 0 && /^akumulasi\b|^cadangan kerugian|^penyisihan/.test(n)) normal = "Kredit";
+    if (group === "Ekuitas" && /^prive\b|^dividen|^saham treasuri/.test(n)) normal = "Debit";
+    return normal;
+  }
+
+  function applyAutoFields() {
+    if (editingId !== null) return;
+
+    const group = document.getElementById("accountGroup").value;
+    const name = document.getElementById("accountName").value;
+    const codeEl = document.getElementById("accountCode");
+    const balEl = document.getElementById("normalBalance");
+
+    if (group) {
+      if (!balEl.value || balanceAutoSet) {
+        balEl.value = defaultNormal(group, name);
+        balanceAutoSet = true;
+      }
+      if (!codeEl.value.trim() || codeAutoFilled) {
+        codeEl.value = suggestNextCode(group);
+        codeAutoFilled = true;
+      }
+    }
+
+    // Hanya akun Aset Lancar yang bisa jadi Kas/Bank (jadi "Utang Bank" tidak ikut tercentang).
+    if (group === "Aset Lancar" && /\b(kas|bank|cash)\b/i.test(name) && !/^(piutang|utang|uang muka)/i.test(name.trim())) {
+      document.getElementById("isCash").checked = true;
+    }
+  }
+
+  document.getElementById("accountGroup").addEventListener("change", applyAutoFields);
+  document.getElementById("accountName").addEventListener("input", applyAutoFields);
+  document.getElementById("accountCode").addEventListener("input", function () { codeAutoFilled = false; });
+  document.getElementById("normalBalance").addEventListener("change", function () { balanceAutoSet = false; });
+
+  const _resetFormOriginal = resetForm;
+  resetForm = function () {
+    _resetFormOriginal();
+    codeAutoFilled = false;
+    balanceAutoSet = false;
+  };
+
+  render();
+
+</script>
+
+</body>
+</html>
