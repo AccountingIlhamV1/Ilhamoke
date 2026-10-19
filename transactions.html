@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transaksi - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Transaksi</h1>
+          <p id="topbarSubtitle">Input transaksi dan pencatatan jurnal otomatis</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif.<br><br>
+        Silakan buat atau pilih usaha terlebih dahulu.<br><br>
+        <a href="business.html">Buka Data Usaha</a>
+      </div>
+
+      <div class="card">
+        <h2 id="formTitle">➕ Input Transaksi</h2>
+        <div id="statusMessage" class="status-line">Memuat data...</div>
+
+        <form id="transactionForm">
+
+          <div class="form-grid">
+            <div>
+              <label for="transactionDate">Tanggal</label>
+              <input type="date" id="transactionDate" required>
+            </div>
+            <div>
+              <label for="invoice">No. Invoice / Referensi</label>
+              <input type="text" id="invoice" autocomplete="off" placeholder="Terisi otomatis">
+              <small style="display:block;margin-top:4px;opacity:.7">Nomor terisi otomatis (INV-bulan-urutan). Boleh diganti manual.</small>
+            </div>
+          </div>
+
+          <label for="description">Keterangan</label>
+          <textarea id="description" required placeholder="Contoh: Pembelian perlengkapan secara tunai"></textarea>
+
+          <div class="form-grid">
+            <div>
+              <label for="debitAccount">Akun Debit</label>
+              <select id="debitAccount" required>
+                <option value="">-- Pilih Akun Debit --</option>
+              </select>
+            </div>
+            <div>
+              <label for="creditAccount">Akun Kredit</label>
+              <select id="creditAccount" required>
+                <option value="">-- Pilih Akun Kredit --</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="amount">Jumlah</label>
+          <input type="text" id="amount" inputmode="decimal" autocomplete="off" required placeholder="0">
+          <small style="display:block;margin-top:4px;opacity:.7">Titik otomatis muncul sebagai pemisah ribuan. Pakai koma untuk desimal.</small>
+
+          <button type="submit" class="btn-save" id="saveButton">Simpan Transaksi</button>
+          <button type="button" class="btn-cancel" id="cancelButton" style="display:none">Batal Edit</button>
+
+        </form>
+      </div>
+
+      <div class="card" id="importCard">
+        <h2>📥 Import CSV dari Kasir Catat.in</h2>
+        <p class="card-sub">Pilih file CSV hasil ekspor kasir. Setiap transaksi kasir menjadi satu jurnal penjualan: Debit akun penerimaan (sesuai metode bayar), Kredit akun pendapatan. Kalau file berisi harga modal (skema 1.2), ditambah jurnal HPP: Debit HPP, Kredit Persediaan. Transaksi yang sudah pernah diimpor otomatis dilewati.</p>
+
+        <input type="file" id="csvFile" accept=".csv,text/csv">
+        <div id="importStatus" class="status-line" style="display:none"></div>
+
+        <div id="importMapping" style="display:none">
+          <h3 style="margin:16px 0 8px">Pemetaan Akun</h3>
+          <div class="form-grid" id="importMappingGrid"></div>
+        </div>
+
+        <div id="importPreview" style="display:none">
+          <h3 style="margin:16px 0 8px">Pratinjau</h3>
+          <div class="table-wrapper">
+            <table class="table-wide">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>No. Transaksi</th>
+                  <th>Keterangan</th>
+                  <th>Metode</th>
+                  <th class="number">Total</th>
+                  <th class="number">HPP</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="importTable"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn-save" id="importButton">Impor Transaksi</button>
+          <button type="button" class="btn-cancel" id="importCancel">Batal</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📋 Daftar Transaksi</h2>
+        <p class="card-sub">Hanya transaksi milik usaha aktif yang ditampilkan.</p>
+
+        <div class="table-wrapper">
+          <table class="table-wide">
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Tanggal</th>
+                <th>Invoice</th>
+                <th>Keterangan</th>
+                <th>Debit</th>
+                <th>Kredit</th>
+                <th class="number">Jumlah</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="transactionTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "transactions",
+    title: "Transaksi",
+    subtitle: "Input transaksi dan pencatatan jurnal otomatis"
+  });
+
+  let editingId = null;
+
+  /* ===== DEFAULT TANGGAL ===== */
+
+  function setDefaultDate() {
+    const dateInput = document.getElementById("transactionDate");
+    if (!dateInput.value) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      dateInput.value = `${year}-${month}-${day}`;
+    }
+  }
+
+  /* ===== INPUT JUMLAH: pemisah ribuan otomatis (1.500.000,50) ===== */
+
+  // Ubah teks input jadi angka. "1.500.000,5" -> 1500000.5
+  function parseAmount(text) {
+    const clean = String(text || "").replace(/\./g, "").replace(",", ".");
+    const value = Number(clean);
+    return isNaN(value) ? 0 : value;
+  }
+
+  // Rapikan teks yang sedang diketik: hanya angka & satu koma, ribuan diberi titik.
+  function formatAmountInput(raw) {
+    let text = String(raw).replace(/[^\d,]/g, "");
+    const commaIndex = text.indexOf(",");
+    let intPart = commaIndex === -1 ? text : text.slice(0, commaIndex);
+    let decPart = commaIndex === -1 ? null : text.slice(commaIndex + 1).replace(/,/g, "").slice(0, 2);
+
+    intPart = intPart.replace(/^0+(?=\d)/, "");
+    intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+    return decPart === null ? intPart : intPart + "," + decPart;
+  }
+
+  document.getElementById("amount").addEventListener("input", function () {
+    const el = this;
+    // Posisi kursor dihitung dari jumlah karakter angka/koma di sebelah kirinya.
+    const before = el.value.slice(0, el.selectionStart).replace(/[^\d,]/g, "").length;
+    el.value = formatAmountInput(el.value);
+
+    let pos = 0, seen = 0;
+    while (pos < el.value.length && seen < before) {
+      if (/[\d,]/.test(el.value.charAt(pos))) seen++;
+      pos++;
+    }
+    el.setSelectionRange(pos, pos);
+  });
+
+  /* ===== NO. INVOICE OTOMATIS: INV-YYYYMM-0001 =====
+     Bulan mengikuti tanggal transaksi; urutan = nomor terbesar bulan itu + 1,
+     dihitung per usaha aktif. Kalau diketik manual, nomor tidak ditimpa lagi. */
+
+  let invoiceAuto = true;
+
+  function generateInvoiceNumber(dateString) {
+    const ym = String(dateString || "").slice(0, 7).replace("-", "");
+    if (!/^\d{6}$/.test(ym)) return "";
+
+    const prefix = "INV-" + ym + "-";
+    let max = 0;
+
+    ERP.getActiveTransactions().forEach(function (t) {
+      const ref = String(t.invoice || "");
+      if (ref.indexOf(prefix) === 0) {
+        const n = parseInt(ref.slice(prefix.length), 10);
+        if (!isNaN(n) && n > max) max = n;
+      }
+    });
+
+    return prefix + String(max + 1).padStart(4, "0");
+  }
+
+  function fillInvoice() {
+    if (editingId !== null) return;
+    const invoiceEl = document.getElementById("invoice");
+    if (!invoiceAuto && invoiceEl.value.trim() !== "") return;
+    invoiceEl.value = generateInvoiceNumber(document.getElementById("transactionDate").value);
+    invoiceAuto = true;
+  }
+
+  document.getElementById("invoice").addEventListener("input", function () {
+    invoiceAuto = false;
+  });
+  document.getElementById("transactionDate").addEventListener("change", fillInvoice);
+
+  /* ===== RESET FORM ===== */
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById("transactionForm").reset();
+    document.getElementById("formTitle").textContent = "➕ Input Transaksi";
+    document.getElementById("saveButton").textContent = "Simpan Transaksi";
+    document.getElementById("cancelButton").style.display = "none";
+    setDefaultDate();
+    invoiceAuto = true;
+    fillInvoice();
+  }
+
+  document.getElementById("cancelButton").addEventListener("click", resetForm);
+
+  /* ===== SIMPAN TRANSAKSI ===== */
+
+  document.getElementById("transactionForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const business = ERP.getActiveBusiness();
+
+    if (!business) {
+      alert("Buat atau pilih usaha terlebih dahulu.");
+      return;
+    }
+
+    const accounts = ERP.getActiveAccounts();
+
+    if (accounts.length < 2) {
+      alert("Minimal harus ada 2 akun COA pada usaha aktif.");
+      return;
+    }
+
+    const date = document.getElementById("transactionDate").value;
+    if (editingId === null && document.getElementById("invoice").value.trim() === "") {
+      invoiceAuto = true;
+      fillInvoice();
+    }
+    const invoice = document.getElementById("invoice").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const debitAccount = document.getElementById("debitAccount").value;
+    const creditAccount = document.getElementById("creditAccount").value;
+    const amount = parseAmount(document.getElementById("amount").value);
+
+    if (!date || !description || !debitAccount || !creditAccount || !amount || amount <= 0) {
+      alert("Lengkapi semua data transaksi.");
+      return;
+    }
+
+    if (ERP.idEqual(debitAccount, creditAccount)) {
+      alert("Akun Debit dan Kredit tidak boleh sama.");
+      return;
+    }
+
+    const debitExists = accounts.some(a => ERP.idEqual(a.id, debitAccount));
+    const creditExists = accounts.some(a => ERP.idEqual(a.id, creditAccount));
+
+    if (!debitExists || !creditExists) {
+      alert("Akun transaksi tidak valid.");
+      return;
+    }
+
+    const transactions = ERP.getTransactions();
+
+    if (editingId !== null) {
+
+      const index = transactions.findIndex(t => ERP.idEqual(t.id, editingId) && ERP.idEqual(t.businessId, business.id));
+
+      if (index < 0) {
+        alert("Transaksi tidak ditemukan.");
+        return;
+      }
+
+      transactions[index] = {
+        ...transactions[index],
+        date, invoice, description,
+        debitAccountId: debitAccount,
+        creditAccountId: creditAccount,
+        amount
+      };
+
+      alert("Transaksi berhasil diperbarui.");
+
+    } else {
+
+      transactions.push({
+        id: String(Date.now()),
+        businessId: business.id,
+        date, invoice, description,
+        debitAccountId: debitAccount,
+        creditAccountId: creditAccount,
+        amount,
+        createdAt: new Date().toISOString()
+      });
+
+      alert("Transaksi berhasil disimpan.");
+    }
+
+    ERP.saveTransactions(transactions);
+    resetForm();
+    render();
+  });
+
+  /* ===== EDIT TRANSAKSI ===== */
+
+  function editTransaction(id) {
+    const business = ERP.getActiveBusiness();
+    const transaction = ERP.getActiveTransactions().find(t => ERP.idEqual(t.id, id));
+
+    if (!business || !transaction) {
+      alert("Transaksi tidak ditemukan.");
+      return;
+    }
+
+    editingId = transaction.id;
+
+    document.getElementById("transactionDate").value = transaction.date || "";
+    document.getElementById("invoice").value = transaction.invoice || "";
+    invoiceAuto = false;
+    document.getElementById("description").value = transaction.description || "";
+
+    // Pastikan dropdown terisi sebelum memilih akun.
+    ERP.loadAccountDropdowns("debitAccount", "creditAccount");
+
+    document.getElementById("debitAccount").value = transaction.debitAccountId || "";
+    document.getElementById("creditAccount").value = transaction.creditAccountId || "";
+    document.getElementById("amount").value = formatAmountInput(String(transaction.amount || "").replace(".", ","));
+
+    document.getElementById("formTitle").textContent = "✏️ Edit Transaksi";
+    document.getElementById("saveButton").textContent = "Update Transaksi";
+    document.getElementById("cancelButton").style.display = "inline-block";
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /* ===== HAPUS TRANSAKSI ===== */
+
+  function deleteTransaction(id) {
+    const business = ERP.getActiveBusiness();
+    if (!business) return;
+
+    const transactions = ERP.getTransactions();
+    const index = transactions.findIndex(t => ERP.idEqual(t.id, id) && ERP.idEqual(t.businessId, business.id));
+
+    if (index < 0) {
+      alert("Transaksi tidak ditemukan.");
+      return;
+    }
+
+    const transaction = transactions[index];
+    const confirmed = confirm(`Yakin ingin menghapus transaksi "${transaction.description}"?`);
+
+    if (!confirmed) return;
+
+    transactions.splice(index, 1);
+    ERP.saveTransactions(transactions);
+
+    if (ERP.idEqual(editingId, id)) resetForm();
+
+    render();
+  }
+
+
+  /* ===== IMPORT CSV (Kasir Catat.in) =====
+     Satu transaksi kasir (transaction_id) = satu jurnal penjualan:
+     Debit akun penerimaan sesuai metode bayar, Kredit akun pendapatan,
+     jumlah = transaction_total. Kalau file memuat harga modal (skema 1.2:
+     kolom unit_cost / cogs_total), ditambah satu jurnal HPP per transaksi:
+     Debit HPP, Kredit Persediaan, jumlah = total cogs_total. Baris tanpa
+     harga modal (kosong) tidak dihitung HPP-nya, bukan dianggap nol.
+     Pencegah duplikat: sourceId = transaction_id; jurnal penjualan bertanda
+     source "catatin", jurnal HPP bertanda "catatin-hpp". Kalau penjualan
+     sudah pernah diimpor (mis. dari file skema 1.1), impor ulang dari file
+     1.2 hanya menambahkan jurnal HPP-nya. */
+
+  const IMPORT_MAP_KEY = "ilhamERP_importMap";
+  let importGroups = [];
+  let importHasCogs = false;
+
+  // Parser CSV sederhana: mendukung tanda kutip, koma di dalam kutip, CRLF, BOM.
+  function parseCSV(text) {
+    text = String(text || "").replace(/^\uFEFF/, "");
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += c;
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(field); field = "";
+      } else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(field); field = "";
+        if (row.some(v => v !== "")) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    row.push(field);
+    if (row.some(v => v !== "")) rows.push(row);
+    return rows;
+  }
+
+  // Kelompokkan baris per transaction_id. Mengembalikan { groups, hasCogs, error }.
+  function groupCatatinRows(rows) {
+    if (rows.length < 2) return { error: "File CSV kosong atau tidak punya baris data." };
+
+    const header = rows[0].map(h => h.trim());
+    const required = ["transaction_id", "transaction_date", "payment_method", "product_name", "quantity", "line_total", "transaction_total"];
+    const missing = required.filter(h => header.indexOf(h) === -1);
+    if (missing.length) return { error: "Kolom wajib tidak ditemukan: " + missing.join(", ") + ". Pastikan ini file ekspor dari Kasir Catat.in." };
+
+    const idx = {};
+    header.forEach((h, i) => { idx[h] = i; });
+    const get = (r, name) => (idx[name] === undefined ? "" : String(r[idx[name]] || "").trim());
+    const hasCostColumns = idx["unit_cost"] !== undefined || idx["cogs_total"] !== undefined;
+
+    const map = {};
+    const order = [];
+
+    rows.slice(1).forEach(r => {
+      const id = get(r, "transaction_id");
+      if (!id) return;
+      if (!map[id]) {
+        map[id] = {
+          sourceId: id,
+          businessCode: get(r, "business_id"),
+          date: get(r, "transaction_date"),
+          method: get(r, "payment_method") || "Tidak diketahui",
+          total: Number(get(r, "transaction_total")) || 0,
+          items: [],
+          lineSum: 0,
+          cogs: 0,
+          noCost: 0
+        };
+        order.push(id);
+      }
+      const g = map[id];
+      const qty = Number(get(r, "quantity")) || 0;
+      const lineTotal = Number(get(r, "line_total")) || 0;
+      g.items.push({ name: get(r, "product_name"), qty });
+      g.lineSum += lineTotal;
+
+      // HPP baris ini: cogs_total kalau ada, kalau tidak qty x unit_cost, kalau keduanya kosong = tanpa harga modal.
+      const cogsCell = get(r, "cogs_total");
+      const unitCost = get(r, "unit_cost");
+      let lineCogs = null;
+      if (cogsCell !== "") lineCogs = Number(cogsCell);
+      else if (unitCost !== "") lineCogs = qty * Number(unitCost);
+
+      if (lineCogs !== null && !isNaN(lineCogs)) g.cogs += lineCogs;
+      else g.noCost += 1;
+    });
+
+    const groups = order.map(id => map[id]);
+    return { groups, hasCogs: hasCostColumns && groups.some(g => g.cogs > 0) };
+  }
+
+  function itemsText(g) {
+    return g.items.map(i => `${i.name} x${i.qty}`).join(", ");
+  }
+
+  function describeGroup(g) {
+    return `Penjualan kasir ${g.sourceId}: ${itemsText(g)}`;
+  }
+
+  function describeCogs(g) {
+    return `HPP kasir ${g.sourceId}: ${itemsText(g)}`;
+  }
+
+  /* --- Pemetaan akun (disimpan per usaha) --- */
+
+  function loadImportMap() {
+    const business = ERP.getActiveBusiness();
+    if (!business) return {};
+    try {
+      const all = JSON.parse(localStorage.getItem(IMPORT_MAP_KEY) || "{}");
+      return all[String(business.id)] || {};
+    } catch (e) { return {}; }
+  }
+
+  function saveImportMap(map) {
+    const business = ERP.getActiveBusiness();
+    if (!business) return;
+    try {
+      const all = JSON.parse(localStorage.getItem(IMPORT_MAP_KEY) || "{}");
+      all[String(business.id)] = map;
+      localStorage.setItem(IMPORT_MAP_KEY, JSON.stringify(all));
+    } catch (e) { console.error(e); }
+  }
+
+  // Tebakan awal akun berdasarkan nama metode bayar / jenis akun.
+  function guessAccount(accounts, key) {
+    const nameIs = re => accounts.find(a => re.test(a.name || ""));
+    const cash = accounts.filter(a => a.isCash);
+
+    if (key === "__revenue") {
+      return (nameIs(/^pendapatan penjualan$/i) ||
+              accounts.find(a => ERP.REVENUE_GROUPS.includes(a.group) && /penjualan/i.test(a.name || "")) ||
+              accounts.find(a => ERP.REVENUE_GROUPS.includes(a.group)) || {}).id || "";
+    }
+    if (key === "__cogs") {
+      return (nameIs(/^harga pokok penjualan$/i) || nameIs(/harga pokok|\bhpp\b/i) || {}).id || "";
+    }
+    if (key === "__inventory") {
+      return (nameIs(/^persediaan barang dagang$/i) || nameIs(/^persediaan barang jadi$/i) ||
+              accounts.find(a => /^persediaan/i.test(a.name || "") && !/dalam perjalanan|dalam proses/i.test(a.name || "")) || {}).id || "";
+    }
+
+    const k = key.toLowerCase();
+    if (k === "tunai" || k === "cash") {
+      return (cash.find(a => /^kas$/i.test(a.name)) || cash.find(a => /\bkas\b/i.test(a.name)) || cash[0] || {}).id || "";
+    }
+    if (k === "qris" || /wallet|ovo|gopay|dana|shopee/.test(k)) {
+      return (cash.find(a => /dompet digital|e-?wallet/i.test(a.name)) || cash.find(a => /\bbank\b/i.test(a.name)) || cash[0] || {}).id || "";
+    }
+    return (cash.find(a => /\bbank\b/i.test(a.name)) || cash[0] || {}).id || "";
+  }
+
+  function mappingLabel(key) {
+    if (key === "__revenue") return "Akun Pendapatan (Kredit)";
+    if (key === "__cogs") return "Akun HPP (Debit) — kosongkan jika HPP tidak dicatat";
+    if (key === "__inventory") return "Akun Persediaan (Kredit)";
+    return "Metode " + key + " → akun Debit";
+  }
+
+  function buildMappingUI(methods) {
+    const accounts = ERP.getActiveAccounts();
+    const saved = loadImportMap();
+    const grid = document.getElementById("importMappingGrid");
+    grid.innerHTML = "";
+
+    const keys = methods.concat(["__revenue"]);
+    if (importHasCogs) keys.push("__cogs", "__inventory");
+
+    keys.forEach(key => {
+      const wrap = document.createElement("div");
+      const label = document.createElement("label");
+      label.textContent = mappingLabel(key);
+      const select = document.createElement("select");
+      select.dataset.key = key;
+      ERP.fillAccountSelect(select, "-- Pilih Akun --", accounts);
+
+      const exists = id => id && accounts.some(a => ERP.idEqual(a.id, id));
+      select.value = exists(saved[key]) ? saved[key] : guessAccount(accounts, key);
+      select.addEventListener("change", renderImportPreview);
+
+      wrap.appendChild(label);
+      wrap.appendChild(select);
+      grid.appendChild(wrap);
+    });
+  }
+
+  function currentMapping() {
+    const map = {};
+    document.querySelectorAll("#importMappingGrid select").forEach(s => { map[s.dataset.key] = s.value; });
+    return map;
+  }
+
+  function showImportStatus(text, isWarning) {
+    const el = document.getElementById("importStatus");
+    el.style.display = text ? "block" : "none";
+    el.textContent = text || "";
+    el.style.color = isWarning ? "#b45309" : "";
+  }
+
+  function resetImport() {
+    importGroups = [];
+    importHasCogs = false;
+    document.getElementById("csvFile").value = "";
+    document.getElementById("importMapping").style.display = "none";
+    document.getElementById("importPreview").style.display = "none";
+    showImportStatus("");
+  }
+
+  // Tentukan apa yang akan dibuat untuk tiap transaksi kasir. Dipakai pratinjau dan impor.
+  function evaluateGroups() {
+    const map = currentMapping();
+    const salesDone = {};
+    const cogsDone = {};
+
+    ERP.getActiveTransactions().forEach(t => {
+      if (!t.sourceId) return;
+      if (t.source === "catatin-hpp") cogsDone[t.sourceId] = true;
+      else salesDone[t.sourceId] = true;
+    });
+
+    const cogsAccountsOk = !!(map["__cogs"] && map["__inventory"]) && !ERP.idEqual(map["__cogs"], map["__inventory"]);
+
+    return importGroups.map(g => {
+      const hasCogsData = importHasCogs && g.cogs > 0;
+      const wantCogs = hasCogsData && cogsAccountsOk && !cogsDone[g.sourceId];
+
+      // Penjualan sudah pernah diimpor.
+      if (salesDone[g.sourceId]) {
+        if (wantCogs) return { g, status: "hpp", note: "Penjualan sudah ada; hanya HPP yang ditambahkan", addSales: false, addCogs: true };
+        return { g, status: "skip", note: "Sudah pernah diimpor", addSales: false, addCogs: false };
+      }
+
+      const fail = note => ({ g, status: "error", note, addSales: false, addCogs: false });
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(g.date)) return fail("Tanggal tidak valid");
+      if (!(g.total > 0)) return fail("Total nol / tidak valid");
+      if (!map[g.method] || !map["__revenue"]) return fail("Akun belum dipilih");
+      if (ERP.idEqual(map[g.method], map["__revenue"])) return fail("Akun Debit = Kredit");
+
+      const notes = [];
+      if (Math.abs(g.lineSum - g.total) > 0.5) notes.push("Total baris tidak sama dengan total transaksi");
+      if (hasCogsData && !cogsAccountsOk) notes.push("HPP tidak dicatat (akun HPP/Persediaan belum dipilih atau sama)");
+      if (importHasCogs && g.noCost > 0) notes.push(g.noCost + " baris tanpa harga modal, HPP baris itu tidak dicatat");
+
+      return {
+        g,
+        status: notes.length ? "warn" : "ok",
+        note: notes.length ? notes.join("; ") : (wantCogs ? "Siap diimpor (penjualan + HPP)" : "Siap diimpor"),
+        addSales: true,
+        addCogs: wantCogs
+      };
+    });
+  }
+
+  function renderImportPreview() {
+    const table = document.getElementById("importTable");
+    const results = evaluateGroups();
+    table.innerHTML = "";
+
+    const colors = { ok: "#15803d", warn: "#b45309", hpp: "#1d4ed8", skip: "#6b7280", error: "#b91c1c" };
+
+    results.forEach(({ g, status, note }) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${ERP.escapeHTML(g.date)}</td>
+        <td>${ERP.escapeHTML(g.sourceId)}</td>
+        <td>${ERP.escapeHTML(itemsText(g))}</td>
+        <td>${ERP.escapeHTML(g.method)}</td>
+        <td class="number">${ERP.formatMoney(g.total)}</td>
+        <td class="number">${importHasCogs && g.cogs > 0 ? ERP.formatMoney(g.cogs) : "-"}</td>
+        <td style="color:${colors[status]}">${ERP.escapeHTML(note)}</td>
+      `;
+      table.appendChild(row);
+    });
+
+    const ready = results.filter(r => r.addSales || r.addCogs).length;
+    const skipped = results.filter(r => r.status === "skip").length;
+    const errors = results.filter(r => r.status === "error").length;
+
+    let text = `${results.length} transaksi di file: ${ready} siap diproses, ${skipped} sudah ada, ${errors} bermasalah.`;
+    if (!importHasCogs) text += " File ini tidak memuat harga modal, jadi HPP tidak dicatat.";
+    showImportStatus(text, errors > 0);
+    document.getElementById("importButton").disabled = ready === 0;
+  }
+
+  document.getElementById("csvFile").addEventListener("change", function () {
+    const file = this.files && this.files[0];
+    if (!file) { resetImport(); return; }
+
+    const business = ERP.getActiveBusiness();
+    if (!business) {
+      alert("Buat atau pilih usaha terlebih dahulu.");
+      resetImport();
+      return;
+    }
+    if (ERP.getActiveAccounts().length < 2) {
+      alert("Minimal harus ada 2 akun COA pada usaha aktif.");
+      resetImport();
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = function () { showImportStatus("Gagal membaca file.", true); };
+    reader.onload = function () {
+      const parsed = groupCatatinRows(parseCSV(reader.result));
+
+      if (parsed.error) {
+        importGroups = [];
+        importHasCogs = false;
+        document.getElementById("importMapping").style.display = "none";
+        document.getElementById("importPreview").style.display = "none";
+        showImportStatus(parsed.error, true);
+        return;
+      }
+
+      importGroups = parsed.groups;
+      importHasCogs = parsed.hasCogs;
+
+      const methods = [];
+      importGroups.forEach(g => { if (methods.indexOf(g.method) === -1) methods.push(g.method); });
+
+      buildMappingUI(methods);
+      document.getElementById("importMapping").style.display = "block";
+      document.getElementById("importPreview").style.display = "block";
+      renderImportPreview();
+    };
+    reader.readAsText(file, "UTF-8");
+  });
+
+  document.getElementById("importCancel").addEventListener("click", resetImport);
+
+  document.getElementById("importButton").addEventListener("click", function () {
+    const business = ERP.getActiveBusiness();
+    if (!business) { alert("Buat atau pilih usaha terlebih dahulu."); return; }
+
+    const map = currentMapping();
+    const results = evaluateGroups().filter(r => r.addSales || r.addCogs);
+
+    if (results.length === 0) { alert("Tidak ada transaksi yang bisa diimpor."); return; }
+
+    const nSales = results.filter(r => r.addSales).length;
+    const nCogs = results.filter(r => r.addCogs).length;
+    const confirmed = confirm(`Ke usaha "${business.name}": tambah ${nSales} jurnal penjualan dan ${nCogs} jurnal HPP?`);
+    if (!confirmed) return;
+
+    saveImportMap(map);
+
+    const transactions = ERP.getTransactions();
+    const now = new Date().toISOString();
+
+    results.forEach(({ g, addSales, addCogs }, i) => {
+      if (addSales) {
+        transactions.push({
+          id: ERP.newId("imp") + "_" + i,
+          businessId: business.id,
+          date: g.date,
+          invoice: g.sourceId,
+          description: describeGroup(g),
+          debitAccountId: map[g.method],
+          creditAccountId: map["__revenue"],
+          amount: g.total,
+          sourceId: g.sourceId,
+          source: "catatin",
+          createdAt: now
+        });
+      }
+      if (addCogs) {
+        transactions.push({
+          id: ERP.newId("imp") + "_" + i + "h",
+          businessId: business.id,
+          date: g.date,
+          invoice: g.sourceId,
+          description: describeCogs(g),
+          debitAccountId: map["__cogs"],
+          creditAccountId: map["__inventory"],
+          amount: g.cogs,
+          sourceId: g.sourceId,
+          source: "catatin-hpp",
+          createdAt: now
+        });
+      }
+    });
+
+    ERP.saveTransactions(transactions);
+    resetImport();
+    resetForm();
+    render();
+    alert(`${nSales} jurnal penjualan dan ${nCogs} jurnal HPP berhasil diimpor.`);
+  });
+
+  /* ===== RENDER ===== */
+
+  function renderActiveBusiness() {
+    const business = ERP.getActiveBusiness();
+    const warning = document.getElementById("noBusinessWarning");
+    const status = document.getElementById("statusMessage");
+
+    ERP.updateActiveBadge();
+
+    if (!business) {
+      warning.style.display = "block";
+      status.textContent = "Buat atau pilih usaha terlebih dahulu.";
+      return;
+    }
+
+    warning.style.display = "none";
+    status.textContent = `Usaha aktif: ${business.name} | COA tersedia: ${ERP.getActiveAccounts().length} akun`;
+  }
+
+  function render() {
+    renderActiveBusiness();
+    ERP.loadAccountDropdowns("debitAccount", "creditAccount");
+
+    const table = document.getElementById("transactionTable");
+    const transactions = ERP.getActiveTransactions()
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+    table.innerHTML = "";
+
+    if (transactions.length === 0) {
+      table.innerHTML = `<tr><td colspan="8" class="empty">Belum ada transaksi untuk usaha aktif.</td></tr>`;
+      return;
+    }
+
+    transactions.forEach((transaction, index) => {
+      const debit = ERP.getAccountById(transaction.debitAccountId);
+      const credit = ERP.getAccountById(transaction.creditAccountId);
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${ERP.escapeHTML(transaction.date)}</td>
+        <td>${ERP.escapeHTML(transaction.invoice || "-")}</td>
+        <td>${ERP.escapeHTML(transaction.description)}</td>
+        <td class="debit">${debit ? `${ERP.escapeHTML(debit.code)} - ${ERP.escapeHTML(debit.name)}` : "-"}</td>
+        <td class="credit">${credit ? `${ERP.escapeHTML(credit.code)} - ${ERP.escapeHTML(credit.name)}` : "-"}</td>
+        <td class="number">${ERP.formatMoney(transaction.amount)}</td>
+        <td>
+          <button class="btn-edit" onclick="editTransaction('${ERP.escapeHTML(transaction.id)}')">✏️ Edit</button>
+          <button class="btn-delete" onclick="deleteTransaction('${ERP.escapeHTML(transaction.id)}')">🗑️ Hapus</button>
+        </td>
+      `;
+
+      table.appendChild(row);
+    });
+  }
+
+  setDefaultDate();
+  fillInvoice();
+  render();
+
+</script>
+
+</body>
+</html>
