@@ -167,39 +167,17 @@
       return;
     }
 
-    const header = ["No", "Tanggal", "Referensi", "Keterangan", "Akun Debit", "Debit", "Akun Kredit", "Kredit"];
-    let totalDebit = 0, totalCredit = 0;
-
-    const rows = transactions.map((t, index) => {
-      const amount = Number(t.amount) || 0;
-      const debitAccount = ERP.getAccountById(t.debitAccountId);
-      const creditAccount = ERP.getAccountById(t.creditAccountId);
-      totalDebit += amount;
-      totalCredit += amount;
-      return [
-        index + 1,
-        t.date || "-",
-        t.invoice || "-",
-        t.description || "-",
-        debitAccount ? `${debitAccount.code} - ${debitAccount.name}` : "-",
-        amount,
-        creditAccount ? `${creditAccount.code} - ${creditAccount.name}` : "-",
-        amount
-      ];
-    });
-
-    const sheetRows = [
-      [`Jurnal Umum - ${business.name}`],
-      [`Tahun Buku ${business.period}`],
-      [],
-      header,
-      ...rows,
-      [],
-      ["", "", "", "", "TOTAL", totalDebit, "", totalCredit]
-    ];
+    const entries = transactions.map(t => ({
+      date: t.date,
+      reference: t.invoice,
+      description: t.description,
+      debit: ERP.getAccountById(t.debitAccountId),
+      credit: ERP.getAccountById(t.creditAccountId),
+      amount: t.amount
+    }));
 
     ERP.exportReport(format || "xlsx", `Jurnal-Umum-${business.name}.xlsx`, [
-      { name: "Jurnal Umum", rows: sheetRows, colWidths: [5, 12, 12, 28, 24, 16, 24, 16] }
+      ERP.buildJournalSheet({ title: "Jurnal Umum", sheetName: "Jurnal Umum", businessName: business.name, period: business.period, entries })
     ]);
   }
 

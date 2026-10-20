@@ -261,37 +261,17 @@
       return;
     }
 
-    const header = ["No", "Tanggal", "Referensi", "Akun Debit", "Akun Kredit", "Nominal", "Keterangan"];
-    let total = 0;
-
-    const rows = adjustments.map((a, index) => {
-      const debit = ERP.getAccountById(a.debitAccountId);
-      const credit = ERP.getAccountById(a.creditAccountId);
-      const amount = Number(a.amount) || 0;
-      total += amount;
-      return [
-        index + 1,
-        a.date || "-",
-        a.reference || "-",
-        debit ? `${debit.code} - ${debit.name}` : "-",
-        credit ? `${credit.code} - ${credit.name}` : "-",
-        amount,
-        a.description || "-"
-      ];
-    });
-
-    const sheetRows = [
-      [`Jurnal Penyesuaian - ${business.name}`],
-      [`Tahun Buku ${business.period}`],
-      [],
-      header,
-      ...rows,
-      [],
-      ["", "", "", "", "TOTAL", total, ""]
-    ];
+    const entries = adjustments.map(a => ({
+      date: a.date,
+      reference: a.reference,
+      description: a.description,
+      debit: ERP.getAccountById(a.debitAccountId),
+      credit: ERP.getAccountById(a.creditAccountId),
+      amount: a.amount
+    }));
 
     ERP.exportReport(format || "xlsx", `Jurnal-Penyesuaian-${business.name}.xlsx`, [
-      { name: "Jurnal Penyesuaian", rows: sheetRows, colWidths: [5, 12, 12, 24, 24, 16, 30] }
+      ERP.buildJournalSheet({ title: "Jurnal Penyesuaian", sheetName: "Jurnal Penyesuaian", businessName: business.name, period: business.period, entries })
     ]);
   }
 
