@@ -86,7 +86,11 @@
     }
 
     if (isDateStr(val)) return { t: "date", v: val };
-    return { t: "text", v: val === null || val === undefined ? "" : String(val) };
+
+    var text = val === null || val === undefined ? "" : String(val);
+    var lead = /^( +)\S/.exec(text);
+    if (lead) return { t: "text", v: text.trim(), indent: Math.min(4, Math.max(1, Math.floor(lead[1].length / 2))) };
+    return { t: "text", v: text };
   }
 
   function classifySheet(sheet) {
@@ -114,7 +118,8 @@
       // Baris kosong
       if (filled.length === 0) {
         rows.push({ r: r, kind: "blank", cells: [] });
-        inTable = false;
+        // Baris kosong di dalam tabel (pemisah antar jurnal) tidak mengakhiri tabel.
+        if (!(block && block.headers && !block.closed)) inTable = false;
         return;
       }
 
@@ -122,7 +127,7 @@
       if (cells.length === 1 && typeof cells[0] === "string") {
         var kind = "heading";
         if (i === 0) kind = "title";
-        else if (i === 1 && rows[0] && rows[0].kind === "title") kind = "subtitle";
+        else if (rows[i - 1] && (rows[i - 1].kind === "title" || rows[i - 1].kind === "subtitle")) kind = "subtitle";
         rows.push({ r: r, kind: kind, text: cells[0], cells: [] });
         if (kind === "heading") { inTable = false; block = null; }
         return;
@@ -242,7 +247,8 @@
         labels: m.labels,
         ncols: ncols,
         colWidths: widths,
-        landscape: sumWidth > 95,
+        landscape: sheet.orientation ? sheet.orientation === "landscape" : sumWidth > 95,
+        centerTitles: !!sheet.centerTitles,
         freezeRow: null,
         filterRange: null,
         printTitlesRow: null
@@ -253,7 +259,7 @@
         var headerRow = m.rows.filter(function (row) { return row.r === hr; })[0];
         var dataRows = m.rows.filter(function (row) { return row.tid === headerRow.tid && row.kind === "data"; });
         if (hr <= 6) { out.freezeRow = hr; out.printTitlesRow = hr; }
-        if (dataRows.length >= 2) {
+        if (dataRows.length >= 2 && !sheet.noFilter) {
           out.filterRange = "A" + hr + ":" + colLetter(headerRow.ncols) + dataRows[dataRows.length - 1].r;
         }
       }
@@ -359,18 +365,20 @@
 
         if (row.kind === "blank") return;
 
-        if (row.kind === "title") {
+        if (row.kind === "title" || row.kind === "subtitle") {
+          var isTitle = row.kind === "title";
           var tc = ws.getCell(r, 1);
           tc.value = row.text;
-          tc.font = { name: FONT, size: 14, bold: true, color: { argb: NAVY } };
-          ws.getRow(r).height = 22;
-          return;
-        }
-
-        if (row.kind === "subtitle") {
-          var sc = ws.getCell(r, 1);
-          sc.value = row.text;
-          sc.font = { name: FONT, size: 10, italic: true, color: { argb: GRAY_TEXT } };
+          if (sheet.centerTitles) {
+            tc.font = { name: FONT, size: isTitle ? 14 : 11, bold: true, color: { argb: isTitle ? NAVY : "FF000000" } };
+            tc.alignment = { horizontal: "center", vertical: "middle" };
+            if (sheet.ncols > 1) ws.mergeCells(r, 1, r, sheet.ncols);
+          } else if (isTitle) {
+            tc.font = { name: FONT, size: 14, bold: true, color: { argb: NAVY } };
+          } else {
+            tc.font = { name: FONT, size: 10, italic: true, color: { argb: GRAY_TEXT } };
+          }
+          if (isTitle) ws.getRow(r).height = 22;
           return;
         }
 
@@ -415,7 +423,7 @@
           else if (cell.t === "pct") { c.numFmt = PCT_FMT; c.alignment = { horizontal: "right", vertical: "middle" }; }
           else if (cell.t === "int") { c.numFmt = INT_FMT; c.alignment = { horizontal: "center", vertical: "middle" }; }
           else if (cell.t === "date") { c.numFmt = DATE_FMT; c.alignment = { horizontal: "center", vertical: "middle" }; }
-          else { c.alignment = { horizontal: "left", vertical: "middle", wrapText: true }; }
+          else { c.alignment = { horizontal: "left", vertical: "middle", wrapText: true, indent: cell.indent || 0 }; }
         }
       });
 
@@ -543,14 +551,21 @@
       sheet.rows.forEach(function (row) {
         if (row.kind === "title") {
           doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(31, 58, 95);
-          doc.text(pdfText(row.text), MARGIN, y);
+          if (sheet.centerTitles) doc.text(pdfText(row.text), pageW / 2, y, { align: "center" });
+          else doc.text(pdfText(row.text), MARGIN, y);
           y += 6;
           return;
         }
         if (row.kind === "subtitle") {
-          doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(93, 107, 130);
-          doc.text(pdfText(row.text), MARGIN, y);
-          y += 7;
+          if (sheet.centerTitles) {
+            doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+            doc.text(pdfText(row.text), pageW / 2, y, { align: "center" });
+            y += 5.5;
+          } else {
+            doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(93, 107, 130);
+            doc.text(pdfText(row.text), MARGIN, y);
+            y += 7;
+          }
           return;
         }
         if (row.kind === "blank") return;
@@ -580,6 +595,7 @@
         for (var j = 0; j < n; j++) {
           var cell = row.cells[j];
           var styles = { halign: pdfAlign(cell) };
+          if (cell && cell.indent) styles.cellPadding = { top: 1.6, bottom: 1.6, right: 1.6, left: 1.6 + 4 * cell.indent };
           if (row.kind === "total") { styles.fontStyle = "bold"; styles.fillColor = [242, 242, 242]; }
           bodyRow.push({ content: pdfCellText(cell), styles: styles });
         }
@@ -606,7 +622,55 @@
     doc.save(filename);
   }
 
-  /* ---------- 5. API PUBLIK ---------- */
+  /* ---------- 5. FORMAT JURNAL KLASIK ----------
+     Format buku jurnal standar: TGL | KODE | PERKIRAAN | KETERANGAN |
+     DEBET | KREDIT. Akun debit di baris atas, akun kredit di baris bawah
+     (menjorok ke dalam), satu baris kosong antar jurnal, TOTAL di bawah.
+     entries: [{ date, reference, description, debit:{code,name},
+                 credit:{code,name}, amount }] */
+
+  function buildJournalSheet(opts) {
+    var title = String(opts.title || "Jurnal");
+    var rows = [
+      [title.toUpperCase()],
+      [String(opts.businessName || "").toUpperCase()],
+      ["TAHUN " + (opts.period || "")],
+      [],
+      ["TGL", "KODE", "PERKIRAAN", "KETERANGAN", "DEBET", "KREDIT"]
+    ];
+
+    var totalDebit = 0;
+    var totalCredit = 0;
+
+    (opts.entries || []).forEach(function (e) {
+      var amount = Number(e.amount) || 0;
+      var desc = String(e.description || "-");
+      if (e.reference && desc.indexOf(e.reference) === -1) desc += " (" + e.reference + ")";
+      var d = e.debit || {};
+      var k = e.credit || {};
+      var date = e.date || "-";
+
+      rows.push([date, d.code || "", d.name || "-", desc, amount, ""]);
+      rows.push([date, k.code || "", "    " + (k.name || "-"), desc, "", amount]);
+      rows.push([]);
+
+      totalDebit += amount;
+      totalCredit += amount;
+    });
+
+    rows.push(["", "", "", "TOTAL", totalDebit, totalCredit]);
+
+    return {
+      name: opts.sheetName || title,
+      rows: rows,
+      colWidths: [11, 9, 32, 36, 16, 16],
+      centerTitles: true,
+      noFilter: true,
+      orientation: "portrait"
+    };
+  }
+
+  /* ---------- 6. API PUBLIK ---------- */
 
   function exportReport(format, filename, sheets) {
     try {
@@ -625,6 +689,7 @@
   var api = {
     exportReport: exportReport,
     exportToExcel: function (filename, sheets) { exportReport("xlsx", filename, sheets); },
+    buildJournalSheet: buildJournalSheet,
     _buildReportModel: buildModel,
     MONEY_FMT: MONEY_FMT
   };
