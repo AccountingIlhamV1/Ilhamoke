@@ -164,6 +164,9 @@ const ERP = (function () {
     if (/duplicate key|23505|accounts_business_id_code_key/i.test(message)) {
       return "Kode akun tersebut sudah digunakan pada usaha ini.";
     }
+    if (/foreign key|23503/i.test(message)) {
+      return "Data ini masih dipakai oleh data lain (misalnya akun yang sudah dipakai transaksi), jadi tidak bisa dihapus. Hapus atau ubah dulu data yang memakainya.";
+    }
     if (/row-level security|violates row-level/i.test(message)) {
       return "Kamu tidak punya izin untuk mengubah data ini.";
     }
@@ -256,6 +259,7 @@ const ERP = (function () {
     }
     await syncBusinesses();
     await syncAccounts();
+    await syncTransactions();
   }
 
   /* ---------- IMPOR DATA LAMA ---------- */
@@ -653,7 +657,250 @@ const ERP = (function () {
   function getActiveTransactions() {
     const business = getActiveBusiness();
     if (!business) return [];
-    return getTransactions().filter(t => idEqual(t.businessId, business.id));
+    // Transaksi lama (tanpa status) dianggap posted. Draft/void tidak ikut laporan.
+    return getTransactions().filter(t =>
+      idEqual(t.businessId, business.id) && (t.status === undefined || t.status === "posted")
+    );
+  }
+
+  /* ---------- TRANSAKSI <-> SUPABASE ----------
+     Tabel transactions: trx_date, reference_no, description, amount,
+     debit_account_id, credit_account_id (wajib akun UUID di tabel accounts),
+     status (draft/posted/void), source (erp/telegram), raw_input (JSON).
+     Transaksi yang dicatat di ERP masuk sebagai "posted". Penanda impor
+     kasir (source "catatin"/"catatin-hpp" + sourceId) disimpan di raw_input.
+     Transaksi LAMA yang belum diimpor dikenali dari id yang bukan UUID. */
+
+  const IMPORT_TX_IDS_KEY = "ilhamERP_txImportIds";
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function newUuid() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 3 | 8)).toString(16);
+    });
+  }
+
+  function transactionFromRow(row) {
+    const raw = row.raw_input && typeof row.raw_input === "object" ? row.raw_input : {};
+    const t = {
+      id: row.id,
+      businessId: row.business_id,
+      date: row.trx_date,
+      invoice: row.reference_no || "",
+      description: row.description || "",
+      debitAccountId: row.debit_account_id,
+      creditAccountId: row.credit_account_id,
+      amount: Number(row.amount) || 0,
+      status: row.status,
+      createdAt: row.created_at || ""
+    };
+    if (raw.erpSource) t.source = raw.erpSource;
+    else if (row.source && row.source !== "erp") t.source = row.source;
+    if (raw.sourceId) t.sourceId = raw.sourceId;
+    return t;
+  }
+
+  function checkTransactionFields(t) {
+    if (!DATE_RE.test(String(t.date || ""))) throw new Error("Tanggal transaksi tidak valid.");
+    if (!(Number(t.amount) > 0)) throw new Error("Jumlah transaksi harus lebih dari nol.");
+    if (!isUuid(t.debitAccountId) || !isUuid(t.creditAccountId)) {
+      throw new Error("Akun transaksi harus akun yang sudah ada di server. Impor COA lama dulu di menu Chart of Accounts.");
+    }
+    if (idEqual(t.debitAccountId, t.creditAccountId)) throw new Error("Akun Debit dan Kredit tidak boleh sama.");
+  }
+
+  function transactionToRow(businessId, t) {
+    checkTransactionFields(t);
+
+    const row = {
+      business_id: businessId,
+      trx_date: t.date,
+      reference_no: t.invoice ? String(t.invoice) : null,
+      description: t.description || "-",
+      amount: Number(t.amount),
+      debit_account_id: t.debitAccountId,
+      credit_account_id: t.creditAccountId,
+      status: "posted",
+      source: "erp"
+    };
+
+    const created = t.createdAt && !isNaN(new Date(t.createdAt).getTime()) ? new Date(t.createdAt).toISOString() : "";
+    if (created) row.created_at = created;
+    row.posted_at = created || new Date().toISOString();
+
+    if (isUuid(t.id)) row.id = t.id;
+
+    if (t.source || t.sourceId) {
+      row.raw_input = {};
+      if (t.source) row.raw_input.erpSource = t.source;
+      if (t.sourceId) row.raw_input.sourceId = t.sourceId;
+    }
+
+    const user = window.ERPAuth && ERPAuth.getUser ? ERPAuth.getUser() : null;
+    if (user && user.id) row.created_by = user.id;
+
+    return row;
+  }
+
+  function getLegacyTransactions() {
+    return getTransactions().filter(t => !isUuid(t.id));
+  }
+
+  async function fetchRemoteTransactions() {
+    const client = remoteClient();
+    const size = 1000;
+    const all = [];
+    for (let from = 0; ; from += size) {
+      const { data, error } = await client
+        .from("transactions")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      all.push.apply(all, data);
+      if (data.length < size) break;
+    }
+    return all.map(transactionFromRow);
+  }
+
+  function transactionsSignature(list) {
+    return JSON.stringify(list.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))));
+  }
+
+  // Tarik transaksi dari server ke cache. Hasil true kalau cache berubah.
+  async function syncTransactions() {
+    try {
+      const remote = await fetchRemoteTransactions();
+      const merged = getLegacyTransactions().concat(remote);
+      if (transactionsSignature(merged) === transactionsSignature(getTransactions())) return false;
+      saveTransactions(merged);
+      return true;
+    } catch (error) {
+      console.error("Gagal sinkron transaksi:", error);
+      return false;
+    }
+  }
+
+  async function insertTransactionRows(rows) {
+    const client = remoteClient();
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await client.from("transactions").insert(rows.slice(i, i + 200)).select();
+      if (error) throw error;
+    }
+  }
+
+  // Tambah transaksi baru (bentuk data sama seperti di ERP) sebagai posted.
+  async function createTransactionsRemote(businessId, list) {
+    const rows = list.map(t => transactionToRow(businessId, { ...t, id: null }));
+    try {
+      await insertTransactionRows(rows);
+    } catch (error) {
+      await syncTransactions();
+      throw error;
+    }
+    await syncTransactions();
+  }
+
+  async function updateTransactionRemote(id, fields) {
+    checkTransactionFields(fields);
+    const payload = {
+      trx_date: fields.date,
+      reference_no: fields.invoice ? String(fields.invoice) : null,
+      description: fields.description || "-",
+      amount: Number(fields.amount),
+      debit_account_id: fields.debitAccountId,
+      credit_account_id: fields.creditAccountId
+    };
+    const { data, error } = await remoteClient()
+      .from("transactions")
+      .update(payload)
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Perubahan ditolak: kamu tidak punya izin atau transaksi sudah terhapus.");
+    }
+    await syncTransactions();
+  }
+
+  async function deleteTransactionRemote(id) {
+    const { data, error } = await remoteClient()
+      .from("transactions")
+      .delete()
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Transaksi tidak bisa dihapus (kamu tidak punya izin, atau sudah terhapus).");
+    }
+    await syncTransactions();
+  }
+
+  // Pilah transaksi lama: siap diimpor / menunggu usaha-atau-COA diimpor / tidak valid.
+  function splitLegacyTransactions() {
+    const ready = [], waiting = [], invalid = [];
+    const knownAccounts = {};
+    getAccounts().forEach(a => { knownAccounts[String(a.id)] = true; });
+
+    getLegacyTransactions().forEach(t => {
+      const shapeOk = DATE_RE.test(String(t.date || "")) && Number(t.amount) > 0 &&
+        t.debitAccountId && t.creditAccountId && !idEqual(t.debitAccountId, t.creditAccountId);
+
+      // Akun yang tidak ada sama sekali (baik lokal maupun di server) tidak akan pernah bisa diimpor.
+      if (!shapeOk || !knownAccounts[String(t.debitAccountId)] || !knownAccounts[String(t.creditAccountId)]) invalid.push(t);
+      else if (!isUuid(t.businessId) || !isUuid(t.debitAccountId) || !isUuid(t.creditAccountId)) waiting.push(t);
+      else ready.push(t);
+    });
+
+    return { ready, waiting, invalid };
+  }
+
+  // Kirim transaksi lama ke server. Aman diulang: tiap transaksi diberi id
+  // server tetap (disimpan sementara), jadi yang sudah terkirim tidak dobel.
+  async function importLegacyTransactions() {
+    const split = splitLegacyTransactions();
+    const ready = split.ready;
+    const result = { imported: 0, reused: 0, waiting: split.waiting.length, invalid: split.invalid.length };
+    if (ready.length === 0) return result;
+
+    // Siapkan semua baris dulu supaya data yang salah ketahuan sebelum ada yang terkirim.
+    let pending = {};
+    try { pending = JSON.parse(localStorage.getItem(IMPORT_TX_IDS_KEY) || "{}") || {}; } catch (e) { pending = {}; }
+
+    const prepared = ready.map(t => {
+      if (!pending[String(t.id)]) pending[String(t.id)] = newUuid();
+      const row = transactionToRow(t.businessId, { ...t, id: pending[String(t.id)] });
+      return { old: t, row: row };
+    });
+    localStorage.setItem(IMPORT_TX_IDS_KEY, JSON.stringify(pending));
+
+    downloadBackup();
+
+    const remote = await fetchRemoteTransactions();
+    const existing = {};
+    remote.forEach(r => { existing[String(r.id)] = true; });
+
+    const toInsert = prepared.filter(item => !existing[item.row.id]);
+    result.reused = prepared.length - toInsert.length;
+
+    await insertTransactionRows(toInsert.map(item => item.row));
+    result.imported = toInsert.length;
+
+    const doneIds = {};
+    prepared.forEach(item => {
+      doneIds[String(item.old.id)] = true;
+      delete pending[String(item.old.id)];
+    });
+    saveTransactions(getTransactions().filter(t => !doneIds[String(t.id)]));
+    localStorage.setItem(IMPORT_TX_IDS_KEY, JSON.stringify(pending));
+
+    await syncTransactions();
+    return result;
   }
 
   /* ---------- JURNAL PENYESUAIAN ---------- */
@@ -1190,6 +1437,13 @@ const ERP = (function () {
     updateAccountRemote,
     deleteAccountRemote,
     importLegacyAccounts,
+    getLegacyTransactions,
+    splitLegacyTransactions,
+    syncTransactions,
+    createTransactionsRemote,
+    updateTransactionRemote,
+    deleteTransactionRemote,
+    importLegacyTransactions,
     friendlyError,
     saveBusinesses,
     getActiveBusiness,
@@ -1241,8 +1495,8 @@ const ERP = (function () {
    memakai data terbaru (pengaman: tidak mengulang dalam 10 detik). */
 if (window.ERPAuth) {
   ERPAuth.onReady(function () {
-    Promise.all([ERP.syncBusinesses(), ERP.syncAccounts()]).then(function (results) {
-      if (!results[0] && !results[1]) return;
+    Promise.all([ERP.syncBusinesses(), ERP.syncAccounts(), ERP.syncTransactions()]).then(function (results) {
+      if (!results[0] && !results[1] && !results[2]) return;
       const last = Number(sessionStorage.getItem("ilhamERP_syncReloadAt") || 0);
       if (Date.now() - last < 10000) return;
       sessionStorage.setItem("ilhamERP_syncReloadAt", String(Date.now()));
