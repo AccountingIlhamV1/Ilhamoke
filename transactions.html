@@ -36,6 +36,12 @@
         <a href="business.html">Buka Data Usaha</a>
       </div>
 
+      <div class="card" id="importLegacyCard" style="display:none">
+        <h2>📥 Transaksi Lama di Perangkat Ini</h2>
+        <p class="card-sub" id="importLegacyText"></p>
+        <button type="button" class="btn-save" id="importLegacyButton">Impor Transaksi ke Akun</button>
+      </div>
+
       <div class="card">
         <h2 id="formTitle">➕ Input Transaksi</h2>
         <div id="statusMessage" class="status-line">Memuat data...</div>
@@ -260,8 +266,22 @@
 
   /* ===== SIMPAN TRANSAKSI ===== */
 
-  document.getElementById("transactionForm").addEventListener("submit", function (event) {
+  let busy = false;
+
+  function setBusy(isBusy) {
+    busy = isBusy;
+    const button = document.getElementById("saveButton");
+    button.disabled = isBusy;
+    if (isBusy) {
+      button.textContent = "Menyimpan...";
+    } else {
+      button.textContent = editingId !== null ? "Update Transaksi" : "Simpan Transaksi";
+    }
+  }
+
+  document.getElementById("transactionForm").addEventListener("submit", async function (event) {
     event.preventDefault();
+    if (busy) return;
 
     const business = ERP.getActiveBusiness();
 
@@ -306,45 +326,84 @@
       return;
     }
 
-    const transactions = ERP.getTransactions();
+    setBusy(true);
 
-    if (editingId !== null) {
+    try {
 
-      const index = transactions.findIndex(t => ERP.idEqual(t.id, editingId) && ERP.idEqual(t.businessId, business.id));
+      if (editingId !== null) {
 
-      if (index < 0) {
-        alert("Transaksi tidak ditemukan.");
-        return;
+        const current = ERP.getActiveTransactions().find(t => ERP.idEqual(t.id, editingId));
+
+        if (!current) {
+          alert("Transaksi tidak ditemukan.");
+          return;
+        }
+
+        if (ERP.isUuid(editingId)) {
+          // Transaksi yang sudah tersimpan di server.
+          await ERP.updateTransactionRemote(editingId, {
+            date, invoice, description,
+            debitAccountId: debitAccount,
+            creditAccountId: creditAccount,
+            amount
+          });
+        } else {
+          // Transaksi lama yang belum diimpor: diubah di browser ini saja.
+          const transactions = ERP.getTransactions();
+          const index = transactions.findIndex(t => ERP.idEqual(t.id, editingId) && ERP.idEqual(t.businessId, business.id));
+
+          if (index < 0) {
+            alert("Transaksi tidak ditemukan.");
+            return;
+          }
+
+          transactions[index] = {
+            ...transactions[index],
+            date, invoice, description,
+            debitAccountId: debitAccount,
+            creditAccountId: creditAccount,
+            amount
+          };
+          ERP.saveTransactions(transactions);
+        }
+
+        alert("Transaksi berhasil diperbarui.");
+
+      } else {
+
+        if (ERP.isUuid(business.id) && ERP.isUuid(debitAccount) && ERP.isUuid(creditAccount)) {
+          await ERP.createTransactionsRemote(business.id, [{
+            date, invoice, description,
+            debitAccountId: debitAccount,
+            creditAccountId: creditAccount,
+            amount
+          }]);
+        } else {
+          // Usaha / akun lama yang belum diimpor: disimpan di browser ini dulu.
+          const transactions = ERP.getTransactions();
+          transactions.push({
+            id: String(Date.now()),
+            businessId: business.id,
+            date, invoice, description,
+            debitAccountId: debitAccount,
+            creditAccountId: creditAccount,
+            amount,
+            createdAt: new Date().toISOString()
+          });
+          ERP.saveTransactions(transactions);
+        }
+
+        alert("Transaksi berhasil disimpan.");
       }
 
-      transactions[index] = {
-        ...transactions[index],
-        date, invoice, description,
-        debitAccountId: debitAccount,
-        creditAccountId: creditAccount,
-        amount
-      };
+      resetForm();
+      render();
 
-      alert("Transaksi berhasil diperbarui.");
-
-    } else {
-
-      transactions.push({
-        id: String(Date.now()),
-        businessId: business.id,
-        date, invoice, description,
-        debitAccountId: debitAccount,
-        creditAccountId: creditAccount,
-        amount,
-        createdAt: new Date().toISOString()
-      });
-
-      alert("Transaksi berhasil disimpan.");
+    } catch (error) {
+      alert("Gagal menyimpan: " + ERP.friendlyError(error));
+    } finally {
+      setBusy(false);
     }
-
-    ERP.saveTransactions(transactions);
-    resetForm();
-    render();
   });
 
   /* ===== EDIT TRANSAKSI ===== */
@@ -381,25 +440,36 @@
 
   /* ===== HAPUS TRANSAKSI ===== */
 
-  function deleteTransaction(id) {
+  async function deleteTransaction(id) {
     const business = ERP.getActiveBusiness();
     if (!business) return;
 
-    const transactions = ERP.getTransactions();
-    const index = transactions.findIndex(t => ERP.idEqual(t.id, id) && ERP.idEqual(t.businessId, business.id));
+    const transaction = ERP.getActiveTransactions().find(t => ERP.idEqual(t.id, id));
 
-    if (index < 0) {
+    if (!transaction) {
       alert("Transaksi tidak ditemukan.");
       return;
     }
 
-    const transaction = transactions[index];
     const confirmed = confirm(`Yakin ingin menghapus transaksi "${transaction.description}"?`);
 
     if (!confirmed) return;
 
-    transactions.splice(index, 1);
-    ERP.saveTransactions(transactions);
+    try {
+      if (ERP.isUuid(id)) {
+        await ERP.deleteTransactionRemote(id);
+      } else {
+        const transactions = ERP.getTransactions();
+        const index = transactions.findIndex(t => ERP.idEqual(t.id, id) && ERP.idEqual(t.businessId, business.id));
+        if (index >= 0) {
+          transactions.splice(index, 1);
+          ERP.saveTransactions(transactions);
+        }
+      }
+    } catch (error) {
+      alert("Gagal menghapus: " + ERP.friendlyError(error));
+      return;
+    }
 
     if (ERP.idEqual(editingId, id)) resetForm();
 
@@ -747,7 +817,7 @@
 
   document.getElementById("importCancel").addEventListener("click", resetImport);
 
-  document.getElementById("importButton").addEventListener("click", function () {
+  document.getElementById("importButton").addEventListener("click", async function () {
     const business = ERP.getActiveBusiness();
     if (!business) { alert("Buat atau pilih usaha terlebih dahulu."); return; }
 
@@ -763,12 +833,19 @@
 
     saveImportMap(map);
 
-    const transactions = ERP.getTransactions();
+    const remoteRows = [];
+    const localRows = [];
     const now = new Date().toISOString();
+
+    // Ke server kalau usaha dan kedua akunnya sudah di server; kalau belum, simpan di browser dulu.
+    function place(item) {
+      const toServer = ERP.isUuid(business.id) && ERP.isUuid(item.debitAccountId) && ERP.isUuid(item.creditAccountId);
+      (toServer ? remoteRows : localRows).push(item);
+    }
 
     results.forEach(({ g, addSales, addCogs }, i) => {
       if (addSales) {
-        transactions.push({
+        place({
           id: ERP.newId("imp") + "_" + i,
           businessId: business.id,
           date: g.date,
@@ -783,7 +860,7 @@
         });
       }
       if (addCogs) {
-        transactions.push({
+        place({
           id: ERP.newId("imp") + "_" + i + "h",
           businessId: business.id,
           date: g.date,
@@ -799,11 +876,85 @@
       }
     });
 
-    ERP.saveTransactions(transactions);
+    const button = this;
+    button.disabled = true;
+    button.textContent = "Mengimpor...";
+
+    try {
+      if (remoteRows.length > 0) {
+        await ERP.createTransactionsRemote(business.id, remoteRows);
+      }
+      if (localRows.length > 0) {
+        const transactions = ERP.getTransactions();
+        localRows.forEach(item => transactions.push(item));
+        ERP.saveTransactions(transactions);
+      }
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Impor Transaksi";
+      renderImportPreview();
+      render();
+      alert("Impor belum selesai: " + ERP.friendlyError(error) +
+        "\n\nTransaksi yang sudah sempat masuk akan dilewati otomatis kalau kamu mengimpor lagi.");
+      return;
+    }
+
+    button.textContent = "Impor Transaksi";
     resetImport();
     resetForm();
     render();
     alert(`${nSales} jurnal penjualan dan ${nCogs} jurnal HPP berhasil diimpor.`);
+  });
+
+  /* ===== IMPOR TRANSAKSI LAMA (dari browser ke akun) ===== */
+
+  function renderLegacyCard() {
+    const card = document.getElementById("importLegacyCard");
+    const split = ERP.splitLegacyTransactions();
+
+    if (split.ready.length === 0) {
+      card.style.display = "none";
+      return;
+    }
+
+    let text = `Ada ${split.ready.length} transaksi yang masih tersimpan di browser ini saja. ` +
+      `Impor ke akunmu supaya tersimpan di server. File cadangan akan terunduh otomatis sebelum impor dimulai.`;
+    if (split.waiting.length > 0) {
+      text += ` (${split.waiting.length} transaksi lain menunggu usaha atau COA-nya diimpor dulu.)`;
+    }
+    if (split.invalid.length > 0) {
+      text += ` (${split.invalid.length} transaksi tidak bisa diimpor karena datanya tidak lengkap atau akunnya sudah tidak ada; tetap aman di browser ini.)`;
+    }
+    document.getElementById("importLegacyText").textContent = text;
+    card.style.display = "block";
+  }
+
+  document.getElementById("importLegacyButton").addEventListener("click", async function () {
+    const split = ERP.splitLegacyTransactions();
+    if (split.ready.length === 0) return;
+
+    const confirmed = confirm(
+      "Sebelum mengimpor, file cadangan data ERP akan terunduh otomatis ke perangkatmu.\n\nLanjutkan impor " +
+      split.ready.length + " transaksi ke akunmu?"
+    );
+    if (!confirmed) return;
+
+    const button = this;
+    button.disabled = true;
+    button.textContent = "Mengimpor...";
+
+    try {
+      const result = await ERP.importLegacyTransactions();
+      alert("Berhasil: " + result.imported + " transaksi dikirim ke server" +
+        (result.reused ? ", " + result.reused + " sudah ada di server dan dipakai ulang" : "") + ".");
+    } catch (error) {
+      alert("Impor belum selesai: " + ERP.friendlyError(error) +
+        "\n\nData lamamu masih aman. Kamu bisa menekan tombol Impor lagi.");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Impor Transaksi ke Akun";
+      render();
+    }
   });
 
   /* ===== RENDER ===== */
@@ -826,6 +977,7 @@
   }
 
   function render() {
+    renderLegacyCard();
     renderActiveBusiness();
     ERP.loadAccountDropdowns("debitAccount", "creditAccount");
 
