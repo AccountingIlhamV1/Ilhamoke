@@ -161,6 +161,15 @@ const ERP = (function () {
     if (/failed to fetch|network/i.test(message)) {
       return "Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.";
     }
+    if (/duplicate key|23505|accounts_business_id_code_key/i.test(message)) {
+      return "Kode akun tersebut sudah digunakan pada usaha ini.";
+    }
+    if (/row-level security|violates row-level/i.test(message)) {
+      return "Kamu tidak punya izin untuk mengubah data ini.";
+    }
+    if (/column/i.test(message) && /(group_name|is_cash)/i.test(message)) {
+      return "Kolom baru di Supabase belum ditambahkan. Jalankan dulu SQL tahap COA, lalu coba lagi.";
+    }
     return message || "Terjadi kesalahan.";
   }
 
@@ -246,6 +255,7 @@ const ERP = (function () {
       throw new Error("Usaha tidak bisa dihapus (kamu bukan pemilik, atau sudah terhapus).");
     }
     await syncBusinesses();
+    await syncAccounts();
   }
 
   /* ---------- IMPOR DATA LAMA ---------- */
@@ -330,6 +340,257 @@ const ERP = (function () {
 
     await syncBusinesses();
     return { imported };
+  }
+
+  /* ---------- COA <-> SUPABASE ----------
+     Tabel accounts di server memakai kolom: code, name, category
+     (aset/kewajiban/ekuitas/pendapatan/beban), normal_balance
+     (debit/kredit huruf kecil), plus dua kolom tambahan: group_name
+     (kelompok lengkap ala ERP, mis. "Aset Lancar") dan is_cash.
+     Browser hanya menyimpan salinan (cache) supaya semua halaman tetap
+     membaca COA instan lewat getAccounts().
+     Akun LAMA yang belum diimpor dikenali dari id-nya yang bukan UUID. */
+
+  const DEFAULT_GROUP_OF_CATEGORY = {
+    aset: "Aset Lancar",
+    kewajiban: "Liabilitas Jangka Pendek",
+    ekuitas: "Ekuitas",
+    pendapatan: "Pendapatan",
+    beban: "Beban"
+  };
+
+  function categoryOfGroup(group) {
+    if (ASSET_GROUPS.includes(group)) return "aset";
+    if (LIABILITY_GROUPS.includes(group)) return "kewajiban";
+    if (EQUITY_GROUPS.includes(group)) return "ekuitas";
+    if (REVENUE_GROUPS.includes(group)) return "pendapatan";
+    if (EXPENSE_GROUPS.includes(group)) return "beban";
+    return null;
+  }
+
+  function accountFromRow(row) {
+    return {
+      id: row.id,
+      businessId: row.business_id,
+      code: row.code,
+      name: row.name,
+      group: row.group_name || DEFAULT_GROUP_OF_CATEGORY[row.category] || "",
+      normalBalance: row.normal_balance === "kredit" ? "Kredit" : "Debit",
+      isCash: !!row.is_cash,
+      createdAt: row.created_at || ""
+    };
+  }
+
+  function accountToRow(businessId, account) {
+    const category = categoryOfGroup(account.group);
+    if (!category) {
+      throw new Error('Kelompok akun "' + account.group + '" tidak dikenal (akun ' + account.code + ").");
+    }
+    return {
+      business_id: businessId,
+      code: String(account.code),
+      name: account.name,
+      category: category,
+      group_name: account.group,
+      normal_balance: account.normalBalance === "Kredit" ? "kredit" : "debit",
+      is_cash: !!account.isCash
+    };
+  }
+
+  function getLegacyAccounts() {
+    return getAccounts().filter(a => !isUuid(a.id));
+  }
+
+  // Ambil semua akun dari server (per 1000 baris, batas bawaan Supabase).
+  async function fetchRemoteAccounts() {
+    const client = remoteClient();
+    const size = 1000;
+    const all = [];
+    for (let from = 0; ; from += size) {
+      const { data, error } = await client
+        .from("accounts")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      all.push.apply(all, data);
+      if (data.length < size) break;
+    }
+    return all.map(accountFromRow);
+  }
+
+  function accountsSignature(list) {
+    return JSON.stringify(list.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))));
+  }
+
+  // Tarik COA dari server ke cache. Hasil true kalau cache berubah.
+  async function syncAccounts() {
+    try {
+      const remote = await fetchRemoteAccounts();
+      const merged = getLegacyAccounts().concat(remote);
+      if (accountsSignature(merged) === accountsSignature(getAccounts())) return false;
+      saveAccounts(merged);
+      return true;
+    } catch (error) {
+      console.error("Gagal sinkron COA:", error);
+      return false;
+    }
+  }
+
+  // Tambah banyak akun sekaligus (dipotong per 200 baris).
+  async function createAccountsRemote(businessId, list) {
+    const rows = list.map(a => accountToRow(businessId, a));
+    const client = remoteClient();
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await client.from("accounts").insert(rows.slice(i, i + 200)).select();
+      if (error) {
+        await syncAccounts();
+        throw error;
+      }
+    }
+    await syncAccounts();
+  }
+
+  async function updateAccountRemote(id, fields) {
+    const payload = accountToRow("x", fields);
+    delete payload.business_id;
+    const { data, error } = await remoteClient()
+      .from("accounts")
+      .update(payload)
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Perubahan ditolak: kamu tidak punya izin atau akun sudah terhapus.");
+    }
+    await syncAccounts();
+  }
+
+  async function deleteAccountRemote(id) {
+    const { data, error } = await remoteClient()
+      .from("accounts")
+      .delete()
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Akun tidak bisa dihapus (kamu tidak punya izin, atau sudah terhapus).");
+    }
+    await syncAccounts();
+  }
+
+  // Ganti id akun lama -> id baru di semua data lokal yang menyimpan id akun.
+  function remapAccountIds(map) {
+    const has = (id) => Object.prototype.hasOwnProperty.call(map, String(id));
+
+    [
+      [TRANSACTION_KEY, ["debitAccountId", "creditAccountId"]],
+      [ADJUSTMENT_KEY,  ["debitAccountId", "creditAccountId"]],
+      [CLOSING_KEY,     ["debitAccountId", "creditAccountId"]],
+      [CONTRACT_KEY,    ["revenueAccountId", "receivableAccountId"]]
+    ].forEach(pair => {
+      const list = readArray(pair[0]);
+      let changed = false;
+      list.forEach(item => {
+        if (!item) return;
+        pair[1].forEach(field => {
+          if (item[field] !== undefined && item[field] !== null && has(item[field])) {
+            item[field] = map[String(item[field])];
+            changed = true;
+          }
+        });
+      });
+      if (changed) writeArray(pair[0], list);
+    });
+
+    // Pemetaan akun untuk impor kasir (transactions.html): { idUsaha: { kunci: idAkun } }
+    try {
+      const raw = localStorage.getItem("ilhamERP_importMap");
+      if (raw) {
+        const all = JSON.parse(raw);
+        let changed = false;
+        Object.keys(all).forEach(biz => {
+          const m = all[biz];
+          if (!m || typeof m !== "object") return;
+          Object.keys(m).forEach(k => {
+            if (m[k] !== undefined && m[k] !== null && has(m[k])) {
+              m[k] = map[String(m[k])];
+              changed = true;
+            }
+          });
+        });
+        if (changed) localStorage.setItem("ilhamERP_importMap", JSON.stringify(all));
+      }
+    } catch (error) {
+      console.error("Gagal memperbarui pemetaan impor:", error);
+    }
+  }
+
+  // Kirim akun lama ke server. Hanya akun milik usaha yang SUDAH diimpor
+  // (businessId sudah UUID). Aman diulang: akun yang sudah ada di server
+  // (usaha + kode sama) dipakai ulang, tidak dibuat dobel.
+  async function importLegacyAccounts() {
+    const legacy = getLegacyAccounts().filter(a => isUuid(a.businessId));
+    if (legacy.length === 0) return { imported: 0, reused: 0 };
+
+    const client = remoteClient();
+
+    // Siapkan semua baris dulu supaya kesalahan data ketahuan sebelum ada yang terkirim.
+    const prepared = legacy.map(a => {
+      const isCash = a.isCash === undefined ? /\b(kas|bank|cash)\b/i.test(a.name || "") : !!a.isCash;
+      const account = { ...a, isCash: isCash };
+      return { old: a, row: accountToRow(a.businessId, account) };
+    });
+
+    downloadBackup();
+
+    const keyOf = (businessId, code) => String(businessId) + "|" + String(code).toLowerCase();
+    const remote = await fetchRemoteAccounts();
+    const existing = {};
+    remote.forEach(r => { existing[keyOf(r.businessId, r.code)] = r; });
+
+    const map = {};
+    const toInsert = [];
+    let reused = 0;
+
+    prepared.forEach(item => {
+      const hit = existing[keyOf(item.row.business_id, item.row.code)];
+      if (hit) {
+        map[String(item.old.id)] = hit.id;
+        reused++;
+      } else {
+        toInsert.push(item);
+      }
+    });
+
+    for (let i = 0; i < toInsert.length; i += 200) {
+      const chunk = toInsert.slice(i, i + 200);
+      const { data, error } = await client
+        .from("accounts")
+        .insert(chunk.map(c => c.row))
+        .select();
+      if (error) throw error;
+
+      data.forEach(row => {
+        const item = chunk.find(c => keyOf(c.row.business_id, c.row.code) === keyOf(row.business_id, row.code));
+        if (item) map[String(item.old.id)] = row.id;
+      });
+    }
+
+    const missing = prepared.filter(item => !Object.prototype.hasOwnProperty.call(map, String(item.old.id)));
+    if (missing.length > 0) {
+      throw new Error(missing.length + " akun belum terbaca dari server. Tekan impor lagi.");
+    }
+
+    remapAccountIds(map);
+
+    const doneIds = {};
+    prepared.forEach(item => { doneIds[String(item.old.id)] = true; });
+    saveAccounts(getAccounts().filter(a => !doneIds[String(a.id)]));
+
+    await syncAccounts();
+    return { imported: toInsert.length, reused: reused };
   }
 
   /* ---------- CHART OF ACCOUNTS ---------- */
@@ -923,6 +1184,12 @@ const ERP = (function () {
     updateBusinessRemote,
     deleteBusinessRemote,
     importLegacyBusinesses,
+    getLegacyAccounts,
+    syncAccounts,
+    createAccountsRemote,
+    updateAccountRemote,
+    deleteAccountRemote,
+    importLegacyAccounts,
     friendlyError,
     saveBusinesses,
     getActiveBusiness,
@@ -974,8 +1241,8 @@ const ERP = (function () {
    memakai data terbaru (pengaman: tidak mengulang dalam 10 detik). */
 if (window.ERPAuth) {
   ERPAuth.onReady(function () {
-    ERP.syncBusinesses().then(function (changed) {
-      if (!changed) return;
+    Promise.all([ERP.syncBusinesses(), ERP.syncAccounts()]).then(function (results) {
+      if (!results[0] && !results[1]) return;
       const last = Number(sessionStorage.getItem("ilhamERP_syncReloadAt") || 0);
       if (Date.now() - last < 10000) return;
       sessionStorage.setItem("ilhamERP_syncReloadAt", String(Date.now()));
