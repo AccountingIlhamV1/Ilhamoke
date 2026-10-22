@@ -653,6 +653,23 @@ const ERP = (function () {
     const appShell = document.querySelector(".app-shell");
 
     if (sidebar) sidebar.innerHTML = buildSidebar(options.active);
+
+    // Info akun + tombol Keluar (hanya jika modul login dimuat).
+    if (sidebar && window.ERPAuth) {
+      const userBox = document.createElement("div");
+      userBox.className = "sidebar-user";
+      userBox.innerHTML = `
+        <div class="sidebar-user-email" id="sidebarUserEmail">Memuat akun...</div>
+        <button type="button" class="sidebar-logout" id="logoutBtn">Keluar</button>
+      `;
+      sidebar.appendChild(userBox);
+
+      document.getElementById("logoutBtn").addEventListener("click", () => ERPAuth.signOut());
+      ERPAuth.onReady(user => {
+        const emailEl = document.getElementById("sidebarUserEmail");
+        if (emailEl) emailEl.textContent = user.email || "";
+      });
+    }
     if (topbarTitle) topbarTitle.textContent = options.title || "";
     if (topbarSubtitle) topbarSubtitle.textContent = options.subtitle || "";
 

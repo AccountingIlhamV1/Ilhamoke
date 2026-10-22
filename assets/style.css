@@ -503,3 +503,29 @@ td.number, th.number, .amount { text-align: right; white-space: nowrap; }
   .summary-grid, .summary-grid.cols-3 { grid-template-columns: 1fr; }
   #topbarTitle { font-size: 17px; }
 }
+
+
+/* ---------- AKUN PENGGUNA DI SIDEBAR ---------- */
+
+.sidebar-user {
+  margin: 4px 12px 24px;
+  padding: 14px 10px 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.sidebar-user-email {
+  font-size: 12.5px;
+  color: #9096b8;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+
+.sidebar-logout {
+  width: 100%;
+  justify-content: center;
+  margin: 0;
+  background: rgba(255,255,255,0.08);
+  color: #e5e7f5;
+}
+
+.sidebar-logout:hover { background: rgba(255,255,255,0.14); }
