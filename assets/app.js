@@ -130,6 +130,208 @@ const ERP = (function () {
     localStorage.setItem(ACTIVE_KEY, String(id));
   }
 
+  /* ---------- USAHA <-> SUPABASE ----------
+     Daftar usaha sekarang disimpan di server (Supabase). Browser
+     hanya menyimpan salinan (cache) supaya semua halaman tetap bisa
+     membaca usaha secara instan lewat getBusinesses().
+     Usaha LAMA yang belum diimpor (id bukan UUID) tetap hidup di
+     browser sampai diimpor lewat tombol di halaman Data Usaha.
+     COA, transaksi, dsb. masih di browser (dipindah di tahap berikutnya). */
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const LOCAL_DATA_KEYS = [ACCOUNT_KEY, TRANSACTION_KEY, ADJUSTMENT_KEY, CLOSING_KEY, CONTRACT_KEY, RECOGNITION_KEY];
+
+  function isUuid(id) {
+    return UUID_RE.test(String(id || ""));
+  }
+
+  function getLegacyBusinesses() {
+    return getBusinesses().filter(b => !isUuid(b.id));
+  }
+
+  function remoteClient() {
+    if (!window.ERPAuth || !ERPAuth.client) {
+      throw new Error("Layanan login belum termuat. Muat ulang halaman.");
+    }
+    return ERPAuth.client;
+  }
+
+  function friendlyError(error) {
+    const message = String((error && error.message) || error || "");
+    if (/failed to fetch|network/i.test(message)) {
+      return "Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.";
+    }
+    return message || "Terjadi kesalahan.";
+  }
+
+  function businessFromRow(row) {
+    return {
+      id: row.id,
+      name: row.name || "",
+      address: row.address || "",
+      period: row.period || "",
+      periodStart: row.period_start_date || "",
+      createdAt: row.created_at || ""
+    };
+  }
+
+  async function fetchRemoteBusinesses() {
+    const { data, error } = await remoteClient()
+      .from("businesses")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return data.map(businessFromRow);
+  }
+
+  // Tarik daftar usaha dari server ke cache. Hasil true kalau cache berubah.
+  async function syncBusinesses() {
+    try {
+      const remote = await fetchRemoteBusinesses();
+      const merged = getLegacyBusinesses().concat(remote);
+      if (JSON.stringify(merged) === JSON.stringify(getBusinesses())) return false;
+      saveBusinesses(merged);
+      return true;
+    } catch (error) {
+      console.error("Gagal sinkron usaha:", error);
+      return false;
+    }
+  }
+
+  // Tulis isi usaha ke server (tanpa sinkron ulang).
+  async function pushBusinessFields(id, fields) {
+    const payload = {
+      name: fields.name,
+      address: fields.address || null,
+      period: fields.period || null,
+      period_start_date: fields.periodStart || null
+    };
+    if (fields.createdAt) payload.created_at = fields.createdAt;
+
+    const { data, error } = await remoteClient()
+      .from("businesses")
+      .update(payload)
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Perubahan ditolak: kamu bukan pemilik usaha ini.");
+    }
+  }
+
+  async function createBusinessRemote(fields) {
+    const { data: newId, error } = await remoteClient().rpc("create_business", {
+      p_name: fields.name,
+      p_address: fields.address || null
+    });
+    if (error) throw error;
+    await pushBusinessFields(newId, fields);
+    await syncBusinesses();
+    return newId;
+  }
+
+  async function updateBusinessRemote(id, fields) {
+    await pushBusinessFields(id, fields);
+    await syncBusinesses();
+  }
+
+  async function deleteBusinessRemote(id) {
+    const { data, error } = await remoteClient()
+      .from("businesses")
+      .delete()
+      .eq("id", id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("Usaha tidak bisa dihapus (kamu bukan pemilik, atau sudah terhapus).");
+    }
+    await syncBusinesses();
+  }
+
+  /* ---------- IMPOR DATA LAMA ---------- */
+
+  // Unduh salinan semua data ERP di browser ini sebagai file cadangan.
+  function downloadBackup() {
+    const snapshot = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.indexOf("ilhamERP_") === 0) snapshot[key] = localStorage.getItem(key);
+    }
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "ilham-erp-cadangan-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+  }
+
+  // Ganti id usaha lama -> id baru di semua data lokal yang menempel pada usaha itu.
+  function remapBusinessId(oldId, newId) {
+    LOCAL_DATA_KEYS.forEach(key => {
+      const list = readArray(key);
+      let changed = false;
+      list.forEach(item => {
+        if (item && idEqual(item.businessId, oldId)) {
+          item.businessId = newId;
+          changed = true;
+        }
+      });
+      if (changed) writeArray(key, list);
+    });
+
+    if (idEqual(localStorage.getItem(ACTIVE_KEY), oldId)) {
+      localStorage.setItem(ACTIVE_KEY, String(newId));
+    }
+  }
+
+  // Kirim usaha lama ke akun. Aman diulang: yang sudah berhasil tidak diproses lagi.
+  async function importLegacyBusinesses() {
+    const legacy = getLegacyBusinesses();
+    if (legacy.length === 0) return { imported: 0 };
+
+    const client = remoteClient();
+    downloadBackup();
+
+    let remote = await fetchRemoteBusinesses();
+    let imported = 0;
+
+    for (const business of legacy) {
+      const fields = {
+        name: business.name,
+        address: business.address,
+        period: business.period,
+        periodStart: business.periodStart,
+        createdAt: business.createdAt && !isNaN(new Date(business.createdAt)) ? business.createdAt : ""
+      };
+
+      // Pakai "Usaha Saya" bawaan pendaftaran kalau masih kosong, supaya tidak dobel.
+      const placeholder = remote.find(r => r.name === "Usaha Saya" && !r.address && !r.period);
+      let newId;
+
+      if (placeholder) {
+        newId = placeholder.id;
+        remote = remote.filter(r => r.id !== newId);
+      } else {
+        const { data, error } = await client.rpc("create_business", {
+          p_name: fields.name,
+          p_address: fields.address || null
+        });
+        if (error) throw error;
+        newId = data;
+      }
+
+      await pushBusinessFields(newId, fields);
+      remapBusinessId(business.id, newId);
+      saveBusinesses(getBusinesses().filter(b => !idEqual(b.id, business.id)));
+      imported++;
+    }
+
+    await syncBusinesses();
+    return { imported };
+  }
+
   /* ---------- CHART OF ACCOUNTS ---------- */
 
   function getAccounts() {
@@ -714,6 +916,14 @@ const ERP = (function () {
     CASHFLOW_INVESTING,
     CASHFLOW_FINANCING,
     getBusinesses,
+    isUuid,
+    getLegacyBusinesses,
+    syncBusinesses,
+    createBusinessRemote,
+    updateBusinessRemote,
+    deleteBusinessRemote,
+    importLegacyBusinesses,
+    friendlyError,
     saveBusinesses,
     getActiveBusiness,
     setActiveBusiness,
@@ -758,3 +968,18 @@ const ERP = (function () {
   };
 
 })();
+
+/* Setelah login terverifikasi: tarik daftar usaha dari server.
+   Kalau ada perubahan, muat ulang halaman satu kali supaya tampilan
+   memakai data terbaru (pengaman: tidak mengulang dalam 10 detik). */
+if (window.ERPAuth) {
+  ERPAuth.onReady(function () {
+    ERP.syncBusinesses().then(function (changed) {
+      if (!changed) return;
+      const last = Number(sessionStorage.getItem("ilhamERP_syncReloadAt") || 0);
+      if (Date.now() - last < 10000) return;
+      sessionStorage.setItem("ilhamERP_syncReloadAt", String(Date.now()));
+      location.reload();
+    });
+  });
+}
