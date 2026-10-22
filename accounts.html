@@ -37,6 +37,12 @@
       </div>
 
 
+      <div class="card" id="importAccountsCard" style="display:none">
+        <h2>📥 COA Lama di Perangkat Ini</h2>
+        <p class="card-sub" id="importAccountsText"></p>
+        <button type="button" class="btn-save" id="importAccountsButton">Impor COA ke Akun</button>
+      </div>
+
       <div class="card">
         <h2>⚡ Isi COA Otomatis</h2>
         <p class="card-sub">Pilih jenis usaha, lalu klik tombol. Ratusan akun standar langsung terisi lengkap dengan kode, kelompok, saldo normal, dan penanda Kas/Bank. Akun yang namanya sudah ada tidak diduplikasi, dan kalau kodenya bentrok, akun baru otomatis diberi kode kosong berikutnya.</p>
@@ -165,8 +171,22 @@
 
   /* ===== SIMPAN AKUN ===== */
 
-  document.getElementById("accountForm").addEventListener("submit", function (event) {
+  let busy = false;
+
+  function setBusy(isBusy) {
+    busy = isBusy;
+    const button = document.getElementById("saveButton");
+    button.disabled = isBusy;
+    if (isBusy) {
+      button.textContent = "Menyimpan...";
+    } else {
+      button.textContent = editingId !== null ? "Update Akun" : "Simpan Akun";
+    }
+  }
+
+  document.getElementById("accountForm").addEventListener("submit", async function (event) {
     event.preventDefault();
+    if (busy) return;
 
     const business = ERP.getActiveBusiness();
 
@@ -199,37 +219,58 @@
       return;
     }
 
-    if (editingId !== null) {
+    setBusy(true);
 
-      const index = accounts.findIndex(a => ERP.idEqual(a.id, editingId));
+    try {
 
-      if (index < 0 || !ERP.idEqual(accounts[index].businessId, business.id)) {
-        alert("Akun tidak ditemukan pada usaha aktif.");
-        return;
+      if (editingId !== null) {
+
+        const index = accounts.findIndex(a => ERP.idEqual(a.id, editingId));
+
+        if (index < 0 || !ERP.idEqual(accounts[index].businessId, business.id)) {
+          alert("Akun tidak ditemukan pada usaha aktif.");
+          return;
+        }
+
+        if (ERP.isUuid(editingId)) {
+          await ERP.updateAccountRemote(editingId, { code, name, group, normalBalance, isCash });
+        } else {
+          // Akun lama yang belum diimpor: diubah di browser ini saja.
+          accounts[index] = { ...accounts[index], code, name, group, normalBalance, isCash };
+          ERP.saveAccounts(accounts);
+        }
+
+        alert("Akun berhasil diperbarui.");
+
+      } else {
+
+        if (ERP.isUuid(business.id)) {
+          await ERP.createAccountsRemote(business.id, [{ code, name, group, normalBalance, isCash }]);
+        } else {
+          accounts.push({
+            id: String(Date.now()),
+            businessId: business.id,
+            code,
+            name,
+            group,
+            normalBalance,
+            isCash,
+            createdAt: new Date().toISOString()
+          });
+          ERP.saveAccounts(accounts);
+        }
+
+        alert("Akun berhasil disimpan.");
       }
 
-      accounts[index] = { ...accounts[index], code, name, group, normalBalance, isCash };
-      alert("Akun berhasil diperbarui.");
+      resetForm();
+      render();
 
-    } else {
-
-      accounts.push({
-        id: String(Date.now()),
-        businessId: business.id,
-        code,
-        name,
-        group,
-        normalBalance,
-        isCash,
-        createdAt: new Date().toISOString()
-      });
-
-      alert("Akun berhasil disimpan.");
+    } catch (error) {
+      alert("Gagal menyimpan: " + ERP.friendlyError(error));
+    } finally {
+      setBusy(false);
     }
-
-    ERP.saveAccounts(accounts);
-    resetForm();
-    render();
   });
 
   /* ===== EDIT AKUN ===== */
@@ -260,7 +301,7 @@
 
   /* ===== HAPUS AKUN ===== */
 
-  function deleteAccount(id) {
+  async function deleteAccount(id) {
     const business = ERP.getActiveBusiness();
     if (!business) return;
 
@@ -278,8 +319,17 @@
 
     if (!confirmed) return;
 
-    accounts.splice(index, 1);
-    ERP.saveAccounts(accounts);
+    try {
+      if (ERP.isUuid(id)) {
+        await ERP.deleteAccountRemote(id);
+      } else {
+        accounts.splice(index, 1);
+        ERP.saveAccounts(accounts);
+      }
+    } catch (error) {
+      alert("Gagal menghapus: " + ERP.friendlyError(error));
+      return;
+    }
 
     if (ERP.idEqual(editingId, id)) resetForm();
 
@@ -318,7 +368,65 @@
     status.textContent = `COA untuk usaha aktif: ${business.name} (${ERP.getActiveAccounts().length} akun)`;
   }
 
+  function renderImportCard() {
+    const card = document.getElementById("importAccountsCard");
+    const importable = ERP.getLegacyAccounts().filter(a => ERP.isUuid(a.businessId));
+    const waiting = ERP.getLegacyAccounts().length - importable.length;
+
+    if (importable.length === 0) {
+      card.style.display = "none";
+      return;
+    }
+
+    const names = {};
+    ERP.getBusinesses().forEach(b => { names[String(b.id)] = b.name; });
+    const perBusiness = {};
+    importable.forEach(a => {
+      const n = names[String(a.businessId)] || "usaha";
+      perBusiness[n] = (perBusiness[n] || 0) + 1;
+    });
+    const summary = Object.keys(perBusiness)
+      .map(n => `<strong>${ERP.escapeHTML(n)}</strong> (${perBusiness[n]} akun)`)
+      .join(", ");
+
+    document.getElementById("importAccountsText").innerHTML =
+      `Ada ${importable.length} akun COA yang masih tersimpan di browser ini saja: ${summary}. ` +
+      `Impor ke akunmu supaya COA tersimpan di server. Transaksi dan data lain yang memakai akun ini ` +
+      `otomatis diarahkan ke akun baru. File cadangan akan terunduh otomatis sebelum impor dimulai.` +
+      (waiting > 0 ? ` (${waiting} akun lain milik usaha yang belum diimpor — impor usahanya dulu di Data Usaha.)` : "");
+    card.style.display = "block";
+  }
+
+  document.getElementById("importAccountsButton").addEventListener("click", async function () {
+    const importable = ERP.getLegacyAccounts().filter(a => ERP.isUuid(a.businessId));
+    if (importable.length === 0) return;
+
+    const confirmed = confirm(
+      "Sebelum mengimpor, file cadangan data ERP akan terunduh otomatis ke perangkatmu.\n\nLanjutkan impor " +
+      importable.length + " akun COA ke akunmu?"
+    );
+    if (!confirmed) return;
+
+    const button = this;
+    button.disabled = true;
+    button.textContent = "Mengimpor...";
+
+    try {
+      const result = await ERP.importLegacyAccounts();
+      alert("Berhasil: " + result.imported + " akun baru dikirim ke server" +
+        (result.reused ? ", " + result.reused + " akun sudah ada di server dan dipakai ulang" : "") + ".");
+    } catch (error) {
+      alert("Impor belum selesai: " + ERP.friendlyError(error) +
+        "\n\nData lamamu masih aman. Kamu bisa menekan tombol Impor lagi.");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Impor COA ke Akun";
+      render();
+    }
+  });
+
   function render() {
+    renderImportCard();
     renderActive();
     if (typeof updateTemplatePreview === "function") updateTemplatePreview();
 
@@ -565,7 +673,7 @@
 
   document.getElementById("templateType").addEventListener("change", updateTemplatePreview);
 
-  document.getElementById("loadTemplateButton").addEventListener("click", function () {
+  document.getElementById("loadTemplateButton").addEventListener("click", async function () {
     const business = ERP.getActiveBusiness();
     if (!business) { alert("Buat atau pilih usaha terlebih dahulu."); return; }
 
@@ -582,25 +690,44 @@
       (plan.reassigned ? "; " + plan.reassigned + " akun diberi kode lain karena kodenya bentrok" : "") + ".)";
     if (!confirm(msg)) return;
 
-    const accounts = ERP.getAccounts();
-    const now = Date.now();
+    const button = this;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Menambahkan...";
 
-    plan.toAdd.forEach(function (t, i) {
-      accounts.push({
-        id: String(now + i),
-        businessId: business.id,
-        code: t.code,
-        name: t.name,
-        group: t.group,
-        normalBalance: t.normalBalance,
-        isCash: t.isCash,
-        createdAt: new Date().toISOString()
-      });
-    });
+    try {
+      if (ERP.isUuid(business.id)) {
+        await ERP.createAccountsRemote(business.id, plan.toAdd);
+      } else {
+        const accounts = ERP.getAccounts();
+        const now = Date.now();
 
-    ERP.saveAccounts(accounts);
-    render();
-    alert(plan.toAdd.length + " akun berhasil ditambahkan.");
+        plan.toAdd.forEach(function (t, i) {
+          accounts.push({
+            id: String(now + i),
+            businessId: business.id,
+            code: t.code,
+            name: t.name,
+            group: t.group,
+            normalBalance: t.normalBalance,
+            isCash: t.isCash,
+            createdAt: new Date().toISOString()
+          });
+        });
+
+        ERP.saveAccounts(accounts);
+      }
+
+      render();
+      alert(plan.toAdd.length + " akun berhasil ditambahkan.");
+    } catch (error) {
+      render();
+      alert("Gagal menambahkan template: " + ERP.friendlyError(error) +
+        "\n\nAkun yang sudah sempat masuk tidak akan dobel kalau kamu mencoba lagi.");
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
   });
 
   /* ----- Isi otomatis di form manual ----- */
