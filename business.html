@@ -30,6 +30,12 @@
 
     <main class="content">
 
+      <div class="card" id="importCard" style="display:none">
+        <h2>📥 Data Lama di Perangkat Ini</h2>
+        <p class="card-sub" id="importText"></p>
+        <button type="button" class="btn-save" id="importButton">Impor ke Akun</button>
+      </div>
+
       <div class="card">
         <h2 id="formTitle">➕ Tambah Data Usaha</h2>
         <p class="card-sub">Setiap usaha memiliki COA dan transaksi masing-masing berdasarkan <strong>businessId</strong>.</p>
@@ -100,8 +106,22 @@
 
   /* ===== SUBMIT FORM ===== */
 
-  document.getElementById("businessForm").addEventListener("submit", function (event) {
+  let busy = false;
+
+  function setSaving(isSaving) {
+    busy = isSaving;
+    const button = document.getElementById("saveButton");
+    button.disabled = isSaving;
+    if (isSaving) {
+      button.textContent = "Menyimpan...";
+    } else {
+      button.textContent = editingId !== null ? "Update Usaha" : "Simpan Usaha";
+    }
+  }
+
+  document.getElementById("businessForm").addEventListener("submit", async function (event) {
     event.preventDefault();
+    if (busy) return;
 
     const name = document.getElementById("businessName").value.trim();
     const address = document.getElementById("businessAddress").value.trim();
@@ -113,41 +133,75 @@
       return;
     }
 
-    const businesses = ERP.getBusinesses();
+    setSaving(true);
 
-    if (editingId !== null) {
+    try {
 
-      const index = businesses.findIndex(b => ERP.idEqual(b.id, editingId));
+      if (editingId !== null) {
 
-      if (index === -1) {
-        alert("Usaha tidak ditemukan.");
-        return;
+        if (ERP.isUuid(editingId)) {
+          await ERP.updateBusinessRemote(editingId, { name, address, period, periodStart });
+        } else {
+          // Usaha lama yang belum diimpor: diubah di browser ini saja.
+          const businesses = ERP.getBusinesses();
+          const index = businesses.findIndex(b => ERP.idEqual(b.id, editingId));
+
+          if (index === -1) {
+            alert("Usaha tidak ditemukan.");
+            return;
+          }
+
+          businesses[index] = { ...businesses[index], name, address, period, periodStart };
+          ERP.saveBusinesses(businesses);
+        }
+
+        alert("Data usaha berhasil diperbarui.");
+
+      } else {
+
+        const newId = await ERP.createBusinessRemote({ name, address, period, periodStart });
+        ERP.setActiveBusiness(newId);
+
+        alert("Usaha berhasil disimpan dan menjadi usaha aktif.");
       }
 
-      businesses[index] = { ...businesses[index], name, address, period, periodStart };
-      ERP.saveBusinesses(businesses);
-      alert("Data usaha berhasil diperbarui.");
+      resetForm();
+      render();
 
-    } else {
-
-      const newBusiness = {
-        id: String(Date.now()),
-        name,
-        address,
-        period,
-        periodStart,
-        createdAt: new Date().toISOString()
-      };
-
-      businesses.push(newBusiness);
-      ERP.saveBusinesses(businesses);
-      ERP.setActiveBusiness(newBusiness.id);
-
-      alert("Usaha berhasil disimpan dan menjadi usaha aktif.");
+    } catch (error) {
+      alert("Gagal menyimpan: " + ERP.friendlyError(error));
+    } finally {
+      setSaving(false);
     }
+  });
 
-    resetForm();
-    render();
+  /* ===== IMPOR DATA LAMA ===== */
+
+  document.getElementById("importButton").addEventListener("click", async function () {
+    const legacy = ERP.getLegacyBusinesses();
+    if (legacy.length === 0) return;
+
+    const confirmed = confirm(
+      "Sebelum mengimpor, file cadangan data ERP akan terunduh otomatis ke perangkatmu.\n\nLanjutkan impor " +
+      legacy.length + " usaha ke akunmu?"
+    );
+    if (!confirmed) return;
+
+    const button = this;
+    button.disabled = true;
+    button.textContent = "Mengimpor...";
+
+    try {
+      const result = await ERP.importLegacyBusinesses();
+      alert("Berhasil mengimpor " + result.imported + " usaha ke akunmu.");
+    } catch (error) {
+      alert("Impor belum selesai: " + ERP.friendlyError(error) +
+        "\n\nData lamamu masih aman. Kamu bisa menekan tombol Impor lagi.");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Impor ke Akun";
+      render();
+    }
   });
 
   /* ===== PILIH USAHA ===== */
@@ -190,7 +244,7 @@
 
   /* ===== HAPUS USAHA ===== */
 
-  function deleteBusiness(id) {
+  async function deleteBusiness(id) {
     const businesses = ERP.getBusinesses();
     const business = businesses.find(b => ERP.idEqual(b.id, id));
 
@@ -205,14 +259,23 @@
 
     if (!confirmed) return;
 
-    const newBusinesses = businesses.filter(b => !ERP.idEqual(b.id, id));
-    ERP.saveBusinesses(newBusinesses);
+    try {
+      if (ERP.isUuid(id)) {
+        await ERP.deleteBusinessRemote(id);
+      } else {
+        ERP.saveBusinesses(businesses.filter(b => !ERP.idEqual(b.id, id)));
+      }
+    } catch (error) {
+      alert("Gagal menghapus: " + ERP.friendlyError(error));
+      return;
+    }
 
+    const remaining = ERP.getBusinesses();
     const currentActiveId = localStorage.getItem("ilhamERP_activeBusiness");
 
     if (ERP.idEqual(currentActiveId, id)) {
-      if (newBusinesses.length > 0) {
-        ERP.setActiveBusiness(newBusinesses[0].id);
+      if (remaining.length > 0) {
+        ERP.setActiveBusiness(remaining[0].id);
       } else {
         localStorage.removeItem("ilhamERP_activeBusiness");
       }
@@ -241,6 +304,19 @@
 
   function render() {
     ERP.updateActiveBadge();
+
+    const legacy = ERP.getLegacyBusinesses();
+    const importCard = document.getElementById("importCard");
+    importCard.style.display = legacy.length ? "block" : "none";
+
+    if (legacy.length) {
+      const names = legacy.map(b => `<strong>${ERP.escapeHTML(b.name)}</strong>`).join(", ");
+      document.getElementById("importText").innerHTML =
+        `Ada ${legacy.length} usaha yang masih tersimpan di browser ini saja: ${names}. ` +
+        `Impor ke akunmu supaya data usahanya tersimpan di server. ` +
+        `COA dan transaksinya tetap ikut terhubung ke usaha ini dan dipindahkan ke server di tahap berikutnya. ` +
+        `File cadangan akan terunduh otomatis sebelum impor dimulai.`;
+    }
 
     const businesses = ERP.getBusinesses();
     const active = ERP.getActiveBusiness();
