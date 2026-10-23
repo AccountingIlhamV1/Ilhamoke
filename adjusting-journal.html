@@ -178,8 +178,11 @@
     totalElement.textContent = ERP.formatMoney(total);
   }
 
-  document.getElementById("adjustmentForm").addEventListener("submit", function (event) {
+  let busy = false;
+
+  document.getElementById("adjustmentForm").addEventListener("submit", async function (event) {
     event.preventDefault();
+    if (busy) return;
 
     const business = ERP.getActiveBusiness();
 
@@ -205,34 +208,60 @@
       return;
     }
 
-    const adjustments = ERP.getAdjustments();
+    const finalReference = reference || "AJP-" + String(ERP.getActiveAdjustments().length + 1).padStart(3, "0");
 
-    const adjustment = {
-      id: ERP.newId("adj"),
-      businessId: business.id,
-      date,
-      reference: reference || "AJP-" + String(adjustments.length + 1).padStart(3, "0"),
-      debitAccountId,
-      creditAccountId,
-      amount,
-      description,
-      createdAt: new Date().toISOString()
-    };
+    const saveButton = document.querySelector("#adjustmentForm .btn-save");
+    busy = true;
+    saveButton.disabled = true;
 
-    adjustments.push(adjustment);
-    ERP.saveAdjustments(adjustments);
+    try {
+      if (ERP.isUuid(business.id) && ERP.isUuid(debitAccountId) && ERP.isUuid(creditAccountId)) {
+        await ERP.createAdjustmentsRemote(business.id, [{
+          date, reference: finalReference, debitAccountId, creditAccountId, amount, description
+        }]);
+      } else {
+        // Usaha / akun lama yang belum diimpor: disimpan di browser ini dulu.
+        const adjustments = ERP.getAdjustments();
+        adjustments.push({
+          id: ERP.newId("adj"),
+          businessId: business.id,
+          date,
+          reference: finalReference,
+          debitAccountId,
+          creditAccountId,
+          amount,
+          description,
+          createdAt: new Date().toISOString()
+        });
+        ERP.saveAdjustments(adjustments);
+      }
 
-    showStatus("Jurnal penyesuaian berhasil disimpan.", true);
-    resetForm();
-    renderAdjustments();
+      showStatus("Jurnal penyesuaian berhasil disimpan.", true);
+      resetForm();
+      renderAdjustments();
+    } catch (error) {
+      showStatus("Gagal menyimpan: " + ERP.friendlyError(error), false);
+    } finally {
+      busy = false;
+      saveButton.disabled = false;
+    }
   });
 
-  function deleteAdjustment(id) {
+  async function deleteAdjustment(id) {
     const confirmed = confirm("Yakin ingin menghapus jurnal penyesuaian ini?");
     if (!confirmed) return;
 
-    const filtered = ERP.getAdjustments().filter(a => !ERP.idEqual(a.id, id));
-    ERP.saveAdjustments(filtered);
+    try {
+      if (ERP.isUuid(id)) {
+        await ERP.deleteAdjustmentRemote(id);
+      } else {
+        const filtered = ERP.getAdjustments().filter(a => !ERP.idEqual(a.id, id));
+        ERP.saveAdjustments(filtered);
+      }
+    } catch (error) {
+      showStatus("Gagal menghapus: " + ERP.friendlyError(error), false);
+      return;
+    }
 
     renderAdjustments();
     showStatus("Jurnal penyesuaian berhasil dihapus.", true);
@@ -281,6 +310,7 @@
   ERP.loadAccountDropdowns("debitAccount", "creditAccount");
   resetForm();
   renderAdjustments();
+  ERP.mountLegacyImportCard(renderAdjustments);
 
 </script>
 

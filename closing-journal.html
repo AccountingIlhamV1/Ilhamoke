@@ -188,7 +188,7 @@
     setTimeout(() => { element.style.display = "none"; }, 4000);
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     const targetId = document.getElementById("equityAccount").value;
 
     if (!targetId) {
@@ -196,7 +196,15 @@
       return;
     }
 
-    const entries = ERP.generateClosingEntries(targetId);
+    let entries;
+    try {
+      entries = await ERP.applyClosingEntries(targetId);
+    } catch (error) {
+      renderClosingList();
+      showStatus("Gagal membuat jurnal penutup: " + ERP.friendlyError(error), false);
+      return;
+    }
+
     renderClosingList();
 
     if (entries.length === 0) {
@@ -206,11 +214,18 @@
     }
   }
 
-  function handleClear() {
+  async function handleClear() {
     const confirmed = confirm("Yakin ingin menghapus seluruh jurnal penutup usaha aktif?");
     if (!confirmed) return;
 
-    ERP.clearClosingEntries();
+    try {
+      await ERP.clearClosingEntriesAuto();
+    } catch (error) {
+      renderClosingList();
+      showStatus("Gagal menghapus: " + ERP.friendlyError(error), false);
+      return;
+    }
+
     renderClosingList();
     showStatus("Jurnal penutup dihapus.", true);
   }
@@ -273,6 +288,7 @@
   }
 
   render();
+  ERP.mountLegacyImportCard(render);
 
 </script>
 

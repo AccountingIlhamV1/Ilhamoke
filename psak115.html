@@ -149,8 +149,11 @@
     setTimeout(() => { element.style.display = "none"; }, 4000);
   }
 
-  document.getElementById("contractForm").addEventListener("submit", function (event) {
+  let busy = false;
+
+  document.getElementById("contractForm").addEventListener("submit", async function (event) {
     event.preventDefault();
+    if (busy) return;
 
     const business = ERP.getActiveBusiness();
     if (!business) return;
@@ -171,27 +174,51 @@
       return;
     }
 
-    const contracts = ERP.getContracts();
+    const saveButton = document.getElementById("saveButton");
+    busy = true;
+    saveButton.disabled = true;
 
-    if (editingId) {
-      const index = contracts.findIndex(c => ERP.idEqual(c.id, editingId));
-      if (index >= 0) {
-        contracts[index] = { ...contracts[index], name, totalValue, revenueAccountId, receivableAccountId, startDate };
+    try {
+      if (editingId) {
+
+        if (ERP.isUuid(editingId)) {
+          await ERP.updateContractRemote(editingId, { name, totalValue, revenueAccountId, receivableAccountId, startDate });
+        } else {
+          // Kontrak lama yang belum diimpor: diubah di browser ini saja.
+          const contracts = ERP.getContracts();
+          const index = contracts.findIndex(c => ERP.idEqual(c.id, editingId));
+          if (index >= 0) {
+            contracts[index] = { ...contracts[index], name, totalValue, revenueAccountId, receivableAccountId, startDate };
+            ERP.saveContracts(contracts);
+          }
+        }
+        showStatus("Kontrak berhasil diperbarui.", true);
+
+      } else {
+
+        if (ERP.isUuid(business.id) && ERP.isUuid(revenueAccountId) && ERP.isUuid(receivableAccountId)) {
+          await ERP.createContractsRemote(business.id, [{ name, totalValue, revenueAccountId, receivableAccountId, startDate }]);
+        } else {
+          const contracts = ERP.getContracts();
+          contracts.push({
+            id: ERP.newId("contract"),
+            businessId: business.id,
+            name, totalValue, revenueAccountId, receivableAccountId, startDate,
+            createdAt: new Date().toISOString()
+          });
+          ERP.saveContracts(contracts);
+        }
+        showStatus("Kontrak berhasil disimpan.", true);
       }
-      showStatus("Kontrak berhasil diperbarui.", true);
-    } else {
-      contracts.push({
-        id: ERP.newId("contract"),
-        businessId: business.id,
-        name, totalValue, revenueAccountId, receivableAccountId, startDate,
-        createdAt: new Date().toISOString()
-      });
-      showStatus("Kontrak berhasil disimpan.", true);
-    }
 
-    ERP.saveContracts(contracts);
-    resetForm();
-    renderContracts();
+      resetForm();
+      renderContracts();
+    } catch (error) {
+      showStatus("Gagal menyimpan: " + ERP.friendlyError(error), false);
+    } finally {
+      busy = false;
+      saveButton.disabled = false;
+    }
   });
 
   function editContract(id) {
@@ -211,21 +238,31 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function deleteContract(id) {
+  async function deleteContract(id) {
     const confirmed = confirm("Yakin ingin menghapus kontrak ini beserta seluruh riwayat pengakuan pendapatannya?");
     if (!confirmed) return;
 
-    const contracts = ERP.getContracts().filter(c => !ERP.idEqual(c.id, id));
-    ERP.saveContracts(contracts);
+    try {
+      if (ERP.isUuid(id)) {
+        // Riwayat pengakuan di server ikut terhapus otomatis.
+        await ERP.deleteContractRemote(id);
+      } else {
+        const contracts = ERP.getContracts().filter(c => !ERP.idEqual(c.id, id));
+        ERP.saveContracts(contracts);
 
-    const recognitions = ERP.getRecognitions().filter(r => !ERP.idEqual(r.contractId, id));
-    ERP.saveRecognitions(recognitions);
+        const recognitions = ERP.getRecognitions().filter(r => !ERP.idEqual(r.contractId, id));
+        ERP.saveRecognitions(recognitions);
+      }
+    } catch (error) {
+      showStatus("Gagal menghapus: " + ERP.friendlyError(error), false);
+      return;
+    }
 
     if (ERP.idEqual(editingId, id)) resetForm();
     renderContracts();
   }
 
-  function recognizeRevenue(contractId) {
+  async function recognizeRevenue(contractId) {
     const contract = ERP.getActiveContracts().find(c => ERP.idEqual(c.id, contractId));
     if (!contract) return;
 
@@ -255,18 +292,32 @@
       return;
     }
 
-    const recognitions = ERP.getRecognitions();
-    recognitions.push({
-      id: ERP.newId("rec"),
-      businessId: business.id,
+    const item = {
       contractId,
       date: new Date().toISOString().split("T")[0],
       percentage: ((incremental / contract.totalValue) * 100).toFixed(2),
-      amount: incremental,
-      createdAt: new Date().toISOString()
-    });
+      amount: incremental
+    };
 
-    ERP.saveRecognitions(recognitions);
+    try {
+      if (ERP.isUuid(contractId)) {
+        await ERP.createRecognitionsRemote(business.id, [item]);
+      } else {
+        // Kontrak lama yang belum diimpor: pengakuan disimpan di browser ini dulu.
+        const recognitions = ERP.getRecognitions();
+        recognitions.push({
+          id: ERP.newId("rec"),
+          businessId: business.id,
+          ...item,
+          createdAt: new Date().toISOString()
+        });
+        ERP.saveRecognitions(recognitions);
+      }
+    } catch (error) {
+      alert("Gagal menyimpan pengakuan pendapatan: " + ERP.friendlyError(error));
+      return;
+    }
+
     alert(`Berhasil mengakui pendapatan sebesar ${ERP.formatMoney(incremental)} (progres kumulatif jadi ${newPct}%).`);
     renderContracts();
   }
@@ -430,6 +481,7 @@
   }
 
   render();
+  ERP.mountLegacyImportCard(render);
 
 </script>
 
