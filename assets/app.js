@@ -266,6 +266,7 @@ const ERP = (function () {
     await syncBusinesses();
     await syncAccounts();
     await syncTransactions();
+    await syncOthers();
   }
 
   /* ---------- IMPOR DATA LAMA ---------- */
@@ -955,6 +956,449 @@ const ERP = (function () {
     return result;
   }
 
+  /* ---------- JURNAL PENYESUAIAN / PENUTUP / PSAK 115 <-> SUPABASE ----------
+     Empat tabel baru: adjustments, closing_entries, revenue_contracts,
+     revenue_recognitions. Pola sama seperti COA dan transaksi: browser hanya
+     menyimpan salinan (cache); data lama (id bukan UUID) tetap di browser
+     sampai diimpor. Semua akun yang dipakai harus akun UUID di server. */
+
+  function userIdOrNull() {
+    const user = window.ERPAuth && ERPAuth.getUser ? ERPAuth.getUser() : null;
+    return user && user.id ? user.id : null;
+  }
+
+  function commonRowFields(item) {
+    const row = {};
+    if (isUuid(item.id)) row.id = item.id;
+    const created = item.createdAt && !isNaN(new Date(item.createdAt).getTime()) ? new Date(item.createdAt).toISOString() : "";
+    if (created) row.created_at = created;
+    const uid = userIdOrNull();
+    if (uid) row.created_by = uid;
+    return row;
+  }
+
+  function makeStore(cfg) {
+    function all() { return readArray(cfg.key); }
+    function save(list) { writeArray(cfg.key, list); }
+    function legacy() { return all().filter(x => !isUuid(x.id)); }
+
+    async function fetchAll() {
+      const client = remoteClient();
+      const size = 1000;
+      const out = [];
+      for (let from = 0; ; from += size) {
+        const { data, error } = await client
+          .from(cfg.table)
+          .select("*")
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + size - 1);
+        if (error) throw error;
+        out.push.apply(out, data);
+        if (data.length < size) break;
+      }
+      return out.map(cfg.fromRow);
+    }
+
+    function signature(list) {
+      return JSON.stringify(list.slice().sort((a, b) => String(a.id).localeCompare(String(b.id))));
+    }
+
+    async function sync() {
+      try {
+        const remote = await fetchAll();
+        const merged = legacy().concat(remote);
+        if (signature(merged) === signature(all())) return false;
+        save(merged);
+        return true;
+      } catch (error) {
+        console.error("Gagal sinkron " + cfg.table + ":", error);
+        return false;
+      }
+    }
+
+    async function insertRows(rows) {
+      const client = remoteClient();
+      const out = [];
+      for (let i = 0; i < rows.length; i += 200) {
+        const { data, error } = await client.from(cfg.table).insert(rows.slice(i, i + 200)).select();
+        if (error) throw error;
+        out.push.apply(out, data || []);
+      }
+      return out;
+    }
+
+    async function createMany(businessId, list) {
+      const rows = list.map(x => cfg.toRow(businessId, { ...x, id: null }));
+      let created;
+      try {
+        created = await insertRows(rows);
+      } catch (error) {
+        await sync();
+        throw error;
+      }
+      await sync();
+      return created.map(cfg.fromRow);
+    }
+
+    async function update(id, fields) {
+      const { data, error } = await remoteClient()
+        .from(cfg.table)
+        .update(cfg.toUpdate(fields))
+        .eq("id", id)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Perubahan ditolak: kamu tidak punya izin atau data sudah terhapus.");
+      }
+      await sync();
+    }
+
+    async function remove(id) {
+      const { data, error } = await remoteClient()
+        .from(cfg.table)
+        .delete()
+        .eq("id", id)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Data tidak bisa dihapus (kamu tidak punya izin, atau sudah terhapus).");
+      }
+      await sync();
+    }
+
+    async function removeWhere(column, value) {
+      const { error } = await remoteClient().from(cfg.table).delete().eq(column, value).select();
+      if (error) throw error;
+    }
+
+    return { all, save, legacy, fetchAll, sync, insertRows, createMany, update, remove, removeWhere, toRow: cfg.toRow };
+  }
+
+  function checkJournalFields(t) {
+    if (!DATE_RE.test(String(t.date || ""))) throw new Error("Tanggal tidak valid.");
+    if (!(Number(t.amount) > 0)) throw new Error("Nominal harus lebih dari nol.");
+    if (!isUuid(t.debitAccountId) || !isUuid(t.creditAccountId)) {
+      throw new Error("Akun harus akun yang sudah ada di server. Impor COA lama dulu di menu Chart of Accounts.");
+    }
+    if (idEqual(t.debitAccountId, t.creditAccountId)) throw new Error("Akun Debit dan Kredit tidak boleh sama.");
+  }
+
+  function journalFromRow(dateColumn) {
+    return function (row) {
+      return {
+        id: row.id,
+        businessId: row.business_id,
+        date: row[dateColumn],
+        reference: row.reference_no || "",
+        description: row.description || "",
+        debitAccountId: row.debit_account_id,
+        creditAccountId: row.credit_account_id,
+        amount: Number(row.amount) || 0,
+        createdAt: row.created_at || ""
+      };
+    };
+  }
+
+  function journalToRow(dateColumn) {
+    return function (businessId, t) {
+      checkJournalFields(t);
+      const row = {
+        business_id: businessId,
+        reference_no: t.reference ? String(t.reference) : null,
+        description: t.description || "-",
+        amount: Number(t.amount),
+        debit_account_id: t.debitAccountId,
+        credit_account_id: t.creditAccountId
+      };
+      row[dateColumn] = t.date;
+      return Object.assign(row, commonRowFields(t));
+    };
+  }
+
+  function journalToUpdate(dateColumn) {
+    return function (t) {
+      checkJournalFields(t);
+      const payload = {
+        reference_no: t.reference ? String(t.reference) : null,
+        description: t.description || "-",
+        amount: Number(t.amount),
+        debit_account_id: t.debitAccountId,
+        credit_account_id: t.creditAccountId
+      };
+      payload[dateColumn] = t.date;
+      return payload;
+    };
+  }
+
+  const adjustmentsStore = makeStore({
+    table: "adjustments", key: ADJUSTMENT_KEY,
+    fromRow: journalFromRow("adj_date"), toRow: journalToRow("adj_date"), toUpdate: journalToUpdate("adj_date")
+  });
+
+  const closingStore = makeStore({
+    table: "closing_entries", key: CLOSING_KEY,
+    fromRow: journalFromRow("closing_date"), toRow: journalToRow("closing_date"), toUpdate: journalToUpdate("closing_date")
+  });
+
+  function checkContractFields(c) {
+    if (!c.name) throw new Error("Nama kontrak wajib diisi.");
+    if (!(Number(c.totalValue) > 0)) throw new Error("Nilai kontrak harus lebih dari nol.");
+    if (c.startDate && !DATE_RE.test(String(c.startDate))) throw new Error("Tanggal mulai tidak valid.");
+    if (!isUuid(c.revenueAccountId) || !isUuid(c.receivableAccountId)) {
+      throw new Error("Akun harus akun yang sudah ada di server. Impor COA lama dulu di menu Chart of Accounts.");
+    }
+    if (idEqual(c.revenueAccountId, c.receivableAccountId)) throw new Error("Akun Pendapatan dan Akun Piutang/Aset tidak boleh sama.");
+  }
+
+  const contractsStore = makeStore({
+    table: "revenue_contracts", key: CONTRACT_KEY,
+    fromRow: function (row) {
+      return {
+        id: row.id,
+        businessId: row.business_id,
+        name: row.name || "",
+        totalValue: Number(row.total_value) || 0,
+        revenueAccountId: row.revenue_account_id,
+        receivableAccountId: row.receivable_account_id,
+        startDate: row.start_date || "",
+        createdAt: row.created_at || ""
+      };
+    },
+    toRow: function (businessId, c) {
+      checkContractFields(c);
+      return Object.assign({
+        business_id: businessId,
+        name: c.name,
+        total_value: Number(c.totalValue),
+        revenue_account_id: c.revenueAccountId,
+        receivable_account_id: c.receivableAccountId,
+        start_date: c.startDate || null
+      }, commonRowFields(c));
+    },
+    toUpdate: function (c) {
+      checkContractFields(c);
+      return {
+        name: c.name,
+        total_value: Number(c.totalValue),
+        revenue_account_id: c.revenueAccountId,
+        receivable_account_id: c.receivableAccountId,
+        start_date: c.startDate || null
+      };
+    }
+  });
+
+  const recognitionsStore = makeStore({
+    table: "revenue_recognitions", key: RECOGNITION_KEY,
+    fromRow: function (row) {
+      return {
+        id: row.id,
+        businessId: row.business_id,
+        contractId: row.contract_id,
+        date: row.recognition_date,
+        percentage: Number(row.percentage).toFixed(2),
+        amount: Number(row.amount) || 0,
+        createdAt: row.created_at || ""
+      };
+    },
+    toRow: function (businessId, r) {
+      if (!isUuid(r.contractId)) throw new Error("Kontrak harus sudah ada di server.");
+      if (!DATE_RE.test(String(r.date || ""))) throw new Error("Tanggal pengakuan tidak valid.");
+      if (!(Number(r.amount) > 0)) throw new Error("Jumlah pengakuan harus lebih dari nol.");
+      return Object.assign({
+        business_id: businessId,
+        contract_id: r.contractId,
+        recognition_date: r.date,
+        // Server mewajibkan persen > 0; kenaikan yang sangat kecil dibulatkan ke 0,01 (hanya tampilan).
+        percentage: Math.max(Number(r.percentage) || 0, 0.01),
+        amount: Number(r.amount)
+      }, commonRowFields(r));
+    },
+    toUpdate: function () { throw new Error("Pengakuan pendapatan tidak bisa diubah."); }
+  });
+
+  function syncOthers() {
+    return Promise.all([adjustmentsStore.sync(), closingStore.sync(), contractsStore.sync(), recognitionsStore.sync()])
+      .then(r => r.some(Boolean));
+  }
+
+  // Pilah data lama: siap diimpor / menunggu usaha-atau-COA / tidak valid.
+  function splitLegacyJournalData() {
+    const known = {};
+    getAccounts().forEach(a => { known[String(a.id)] = true; });
+
+    const blank = () => ({ ready: [], waiting: [], invalid: [] });
+    const res = { adjustments: blank(), closing: blank(), contracts: blank(), recognitions: blank() };
+
+    function classifyJournal(t, bucket) {
+      const shapeOk = DATE_RE.test(String(t.date || "")) && Number(t.amount) > 0 &&
+        t.debitAccountId && t.creditAccountId && !idEqual(t.debitAccountId, t.creditAccountId);
+      if (!shapeOk || !known[String(t.debitAccountId)] || !known[String(t.creditAccountId)]) bucket.invalid.push(t);
+      else if (!isUuid(t.businessId) || !isUuid(t.debitAccountId) || !isUuid(t.creditAccountId)) bucket.waiting.push(t);
+      else bucket.ready.push(t);
+    }
+
+    adjustmentsStore.legacy().forEach(t => classifyJournal(t, res.adjustments));
+    closingStore.legacy().forEach(t => classifyJournal(t, res.closing));
+
+    contractsStore.legacy().forEach(c => {
+      const shapeOk = Number(c.totalValue) > 0 && c.name && c.revenueAccountId && c.receivableAccountId &&
+        !idEqual(c.revenueAccountId, c.receivableAccountId) && (!c.startDate || DATE_RE.test(String(c.startDate)));
+      if (!shapeOk || !known[String(c.revenueAccountId)] || !known[String(c.receivableAccountId)]) res.contracts.invalid.push(c);
+      else if (!isUuid(c.businessId) || !isUuid(c.revenueAccountId) || !isUuid(c.receivableAccountId)) res.contracts.waiting.push(c);
+      else res.contracts.ready.push(c);
+    });
+
+    const allContracts = contractsStore.all();
+    const readyContract = {}, waitingContract = {};
+    res.contracts.ready.forEach(c => { readyContract[String(c.id)] = true; });
+    res.contracts.waiting.forEach(c => { waitingContract[String(c.id)] = true; });
+
+    recognitionsStore.legacy().forEach(r => {
+      const shapeOk = DATE_RE.test(String(r.date || "")) && Number(r.amount) > 0;
+      const contract = allContracts.find(c => idEqual(c.id, r.contractId));
+      if (!shapeOk || !contract) res.recognitions.invalid.push(r);
+      else if (!isUuid(r.businessId)) res.recognitions.waiting.push(r);
+      else if (isUuid(contract.id) || readyContract[String(contract.id)]) res.recognitions.ready.push(r);
+      else if (waitingContract[String(contract.id)]) res.recognitions.waiting.push(r);
+      else res.recognitions.invalid.push(r);
+    });
+
+    return res;
+  }
+
+  const IMPORT_OTHER_IDS_KEY = "ilhamERP_otherImportIds";
+
+  // Kirim semua data lama yang siap ke server. Aman diulang: tiap data diberi
+  // id server tetap (disimpan sementara), jadi yang sudah terkirim tidak dobel.
+  async function importLegacyJournalData() {
+    const split = splitLegacyJournalData();
+    const counts = { adjustments: 0, closing: 0, contracts: 0, recognitions: 0, reused: 0 };
+    const totalReady = split.adjustments.ready.length + split.closing.ready.length +
+      split.contracts.ready.length + split.recognitions.ready.length;
+    if (totalReady === 0) return counts;
+
+    let pending = {};
+    try { pending = JSON.parse(localStorage.getItem(IMPORT_OTHER_IDS_KEY) || "{}") || {}; } catch (e) { pending = {}; }
+    const pid = (kind, oldId) => {
+      const k = kind + ":" + oldId;
+      if (!pending[k]) pending[k] = newUuid();
+      return pending[k];
+    };
+
+    // Siapkan semua baris dulu supaya data yang salah ketahuan sebelum ada yang terkirim.
+    const plan = [
+      { kind: "contracts", store: contractsStore, items: split.contracts.ready },
+      { kind: "recognitions", store: recognitionsStore, items: split.recognitions.ready },
+      { kind: "adjustments", store: adjustmentsStore, items: split.adjustments.ready },
+      { kind: "closing", store: closingStore, items: split.closing.ready }
+    ];
+
+    plan.forEach(step => {
+      step.prepared = step.items.map(item => {
+        const copy = { ...item, id: pid(step.kind, item.id) };
+        if (step.kind === "recognitions") {
+          copy.contractId = isUuid(item.contractId) ? item.contractId : pid("contracts", item.contractId);
+        }
+        return { old: item, row: step.store.toRow(item.businessId, copy) };
+      });
+    });
+    localStorage.setItem(IMPORT_OTHER_IDS_KEY, JSON.stringify(pending));
+
+    downloadBackup();
+
+    for (const step of plan) {
+      if (step.prepared.length === 0) continue;
+      const remote = await step.store.fetchAll();
+      const existing = {};
+      remote.forEach(r => { existing[String(r.id)] = true; });
+      const toInsert = step.prepared.filter(x => !existing[x.row.id]);
+      counts.reused += step.prepared.length - toInsert.length;
+      await step.store.insertRows(toInsert.map(x => x.row));
+      counts[step.kind] = toInsert.length;
+    }
+
+    plan.forEach(step => {
+      if (step.prepared.length === 0) return;
+      const done = {};
+      step.prepared.forEach(x => {
+        done[String(x.old.id)] = true;
+        delete pending[step.kind + ":" + x.old.id];
+      });
+      step.store.save(step.store.all().filter(x => !done[String(x.id)]));
+    });
+    localStorage.setItem(IMPORT_OTHER_IDS_KEY, JSON.stringify(pending));
+
+    await syncOthers();
+    return counts;
+  }
+
+  // Kartu "Data Lama di Perangkat Ini" yang dipasang otomatis di atas halaman.
+  function mountLegacyImportCard(onDone) {
+    const host = document.querySelector("main.content");
+    if (!host) return function () {};
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.display = "none";
+    card.innerHTML =
+      '<h2>📥 Data Lama di Perangkat Ini</h2>' +
+      '<p class="card-sub" data-role="text"></p>' +
+      '<button type="button" class="btn-save" data-role="button">Impor Data Lama ke Akun</button>';
+    host.insertBefore(card, host.firstChild);
+
+    const textEl = card.querySelector('[data-role="text"]');
+    const button = card.querySelector('[data-role="button"]');
+
+    function refresh() {
+      const split = splitLegacyJournalData();
+      const labels = [["adjustments", "jurnal penyesuaian"], ["closing", "jurnal penutup"],
+                      ["contracts", "kontrak PSAK 115"], ["recognitions", "pengakuan pendapatan"]];
+      const ready = labels.filter(l => split[l[0]].ready.length > 0)
+        .map(l => split[l[0]].ready.length + " " + l[1]);
+
+      if (ready.length === 0) {
+        card.style.display = "none";
+        return;
+      }
+
+      const waiting = labels.reduce((n, l) => n + split[l[0]].waiting.length, 0);
+      const invalid = labels.reduce((n, l) => n + split[l[0]].invalid.length, 0);
+
+      let text = "Masih tersimpan di browser ini saja: " + ready.join(", ") + ". " +
+        "Impor ke akunmu supaya tersimpan di server. File cadangan akan terunduh otomatis sebelum impor dimulai.";
+      if (waiting > 0) text += " (" + waiting + " data lain menunggu usaha atau COA-nya diimpor dulu.)";
+      if (invalid > 0) text += " (" + invalid + " data tidak bisa diimpor karena tidak lengkap atau akunnya sudah tidak ada; tetap aman di browser ini.)";
+      textEl.textContent = text;
+      card.style.display = "block";
+    }
+
+    button.addEventListener("click", async function () {
+      const confirmed = confirm("Sebelum mengimpor, file cadangan data ERP akan terunduh otomatis ke perangkatmu.\n\nLanjutkan impor data lama ke akunmu?");
+      if (!confirmed) return;
+
+      button.disabled = true;
+      button.textContent = "Mengimpor...";
+      try {
+        const c = await importLegacyJournalData();
+        alert("Berhasil: " + c.adjustments + " jurnal penyesuaian, " + c.closing + " jurnal penutup, " +
+          c.contracts + " kontrak, " + c.recognitions + " pengakuan pendapatan dikirim ke server" +
+          (c.reused ? " (" + c.reused + " sudah ada di server dan dipakai ulang)" : "") + ".");
+      } catch (error) {
+        alert("Impor belum selesai: " + friendlyError(error) +
+          "\n\nData lamamu masih aman. Kamu bisa menekan tombol Impor lagi.");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Impor Data Lama ke Akun";
+        refresh();
+        if (typeof onDone === "function") onDone();
+      }
+    });
+
+    refresh();
+    return refresh;
+  }
+
   /* ---------- JURNAL PENYESUAIAN ---------- */
 
   function getAdjustments() {
@@ -1129,7 +1573,8 @@ const ERP = (function () {
     return getClosingEntries().filter(e => idEqual(e.businessId, business.id));
   }
 
-  function generateClosingEntries(targetEquityAccountId) {
+  // Hitung jurnal penutup (tidak menyimpan apa pun).
+  function buildClosingEntries(targetEquityAccountId) {
     const business = getActiveBusiness();
     if (!business) return [];
 
@@ -1178,11 +1623,45 @@ const ERP = (function () {
       });
     });
 
-    // Ganti seluruh jurnal penutup lama usaha ini dengan yang baru.
+    return newEntries;
+  }
+
+  // Versi lokal (browser saja): ganti seluruh jurnal penutup lama usaha ini.
+  function generateClosingEntries(targetEquityAccountId) {
+    const business = getActiveBusiness();
+    if (!business) return [];
+
+    const newEntries = buildClosingEntries(targetEquityAccountId);
     const others = getClosingEntries().filter(e => !idEqual(e.businessId, business.id));
     saveClosingEntries(others.concat(newEntries));
 
     return newEntries;
+  }
+
+  // Versi yang dipakai halaman: ke server kalau usaha dan akunnya sudah di server.
+  async function applyClosingEntries(targetEquityAccountId) {
+    const business = getActiveBusiness();
+    if (!business) return [];
+
+    const entries = buildClosingEntries(targetEquityAccountId);
+    const toServer = isUuid(business.id) &&
+      entries.every(e => isUuid(e.debitAccountId) && isUuid(e.creditAccountId));
+
+    if (!toServer) {
+      const others = getClosingEntries().filter(e => !idEqual(e.businessId, business.id));
+      saveClosingEntries(others.concat(entries));
+      return entries;
+    }
+
+    // Hapus jurnal penutup lama di server, lalu tulis yang baru.
+    await closingStore.removeWhere("business_id", business.id);
+    saveClosingEntries(getClosingEntries().filter(e => !(idEqual(e.businessId, business.id) && !isUuid(e.id))));
+    if (entries.length > 0) {
+      await closingStore.createMany(business.id, entries);
+    } else {
+      await closingStore.sync();
+    }
+    return entries;
   }
 
   function clearClosingEntries() {
@@ -1190,6 +1669,14 @@ const ERP = (function () {
     if (!business) return;
     const others = getClosingEntries().filter(e => !idEqual(e.businessId, business.id));
     saveClosingEntries(others);
+  }
+
+  async function clearClosingEntriesAuto() {
+    const business = getActiveBusiness();
+    if (!business) return;
+    if (isUuid(business.id)) await closingStore.removeWhere("business_id", business.id);
+    clearClosingEntries();
+    if (isUuid(business.id)) await closingStore.sync();
   }
 
   // Dipakai KHUSUS oleh Neraca Saldo Setelah Penutupan: transaksi +
@@ -1496,6 +1983,18 @@ const ERP = (function () {
     updateTransactionRemote,
     deleteTransactionRemote,
     importLegacyTransactions,
+    syncOthers,
+    splitLegacyJournalData,
+    importLegacyJournalData,
+    mountLegacyImportCard,
+    createAdjustmentsRemote: (businessId, list) => adjustmentsStore.createMany(businessId, list),
+    deleteAdjustmentRemote: (id) => adjustmentsStore.remove(id),
+    createContractsRemote: (businessId, list) => contractsStore.createMany(businessId, list),
+    updateContractRemote: (id, fields) => contractsStore.update(id, fields),
+    deleteContractRemote: async (id) => { await contractsStore.remove(id); await recognitionsStore.sync(); },
+    createRecognitionsRemote: (businessId, list) => recognitionsStore.createMany(businessId, list),
+    applyClosingEntries,
+    clearClosingEntriesAuto,
     friendlyError,
     saveBusinesses,
     getActiveBusiness,
@@ -1547,8 +2046,8 @@ const ERP = (function () {
    memakai data terbaru (pengaman: tidak mengulang dalam 10 detik). */
 if (window.ERPAuth) {
   ERPAuth.onReady(function () {
-    Promise.all([ERP.syncBusinesses(), ERP.syncAccounts(), ERP.syncTransactions()]).then(function (results) {
-      if (!results[0] && !results[1] && !results[2]) return;
+    Promise.all([ERP.syncBusinesses(), ERP.syncAccounts(), ERP.syncTransactions(), ERP.syncOthers()]).then(function (results) {
+      if (!results.some(Boolean)) return;
       const last = Number(sessionStorage.getItem("ilhamERP_syncReloadAt") || 0);
       if (Date.now() - last < 10000) return;
       sessionStorage.setItem("ilhamERP_syncReloadAt", String(Date.now()));
