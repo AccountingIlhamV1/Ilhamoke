@@ -882,7 +882,7 @@
 
     try {
       if (remoteRows.length > 0) {
-        await ERP.createTransactionsRemote(business.id, remoteRows);
+        await ERP.createTransactionsRemote(business.id, remoteRows, { dedupeReferences: true });
       }
       if (localRows.length > 0) {
         const transactions = ERP.getTransactions();
