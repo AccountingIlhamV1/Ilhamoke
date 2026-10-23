@@ -161,8 +161,14 @@ const ERP = (function () {
     if (/failed to fetch|network/i.test(message)) {
       return "Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.";
     }
-    if (/duplicate key|23505|accounts_business_id_code_key/i.test(message)) {
+    if (/uq_transactions_reference/i.test(message)) {
+      return "Nomor invoice/referensi ini sudah dipakai transaksi lain di usaha ini. Ganti dengan nomor lain.";
+    }
+    if (/accounts_business_id_code_key/i.test(message)) {
       return "Kode akun tersebut sudah digunakan pada usaha ini.";
+    }
+    if (/duplicate key|23505/i.test(message)) {
+      return "Data yang sama sudah ada di server (duplikat). Rincian: " + message;
     }
     if (/foreign key|23503/i.test(message)) {
       return "Data ini masih dipakai oleh data lain (misalnya akun yang sudah dipakai transaksi), jadi tidak bisa dihapus. Hapus atau ubah dulu data yang memakainya.";
@@ -690,7 +696,7 @@ const ERP = (function () {
       id: row.id,
       businessId: row.business_id,
       date: row.trx_date,
-      invoice: row.reference_no || "",
+      invoice: row.reference_no || raw.invoice || "",
       description: row.description || "",
       debitAccountId: row.debit_account_id,
       creditAccountId: row.credit_account_id,
@@ -698,6 +704,7 @@ const ERP = (function () {
       status: row.status,
       createdAt: row.created_at || ""
     };
+    if (!row.reference_no && raw.invoice) t.refInRaw = true;
     if (raw.erpSource) t.source = raw.erpSource;
     else if (row.source && row.source !== "erp") t.source = row.source;
     if (raw.sourceId) t.sourceId = raw.sourceId;
@@ -744,6 +751,35 @@ const ERP = (function () {
     if (user && user.id) row.created_by = user.id;
 
     return row;
+  }
+
+  // Server mewajibkan (usaha + nomor referensi) unik. Untuk impor massal,
+  // nomor yang sudah terpakai disimpan di raw_input.invoice (tetap tampil di
+  // ERP) dan kolom reference_no dikosongkan.
+  function referenceKey(businessId, ref) {
+    return String(businessId) + "|" + String(ref);
+  }
+
+  function takenReferences(remoteList) {
+    const taken = {};
+    remoteList.forEach(t => {
+      if (t.invoice && !t.refInRaw) taken[referenceKey(t.businessId, t.invoice)] = true;
+    });
+    return taken;
+  }
+
+  function dedupeRowReferences(rows, taken) {
+    rows.forEach(row => {
+      const ref = row.reference_no;
+      if (!ref) return;
+      const key = referenceKey(row.business_id, ref);
+      if (taken[key]) {
+        row.raw_input = Object.assign({}, row.raw_input || {}, { invoice: ref });
+        row.reference_no = null;
+      } else {
+        taken[key] = true;
+      }
+    });
   }
 
   function getLegacyTransactions() {
@@ -795,8 +831,11 @@ const ERP = (function () {
   }
 
   // Tambah transaksi baru (bentuk data sama seperti di ERP) sebagai posted.
-  async function createTransactionsRemote(businessId, list) {
+  async function createTransactionsRemote(businessId, list, options) {
     const rows = list.map(t => transactionToRow(businessId, { ...t, id: null }));
+    if (options && options.dedupeReferences) {
+      dedupeRowReferences(rows, takenReferences(getTransactions().filter(t => isUuid(t.id))));
+    }
     try {
       await insertTransactionRows(rows);
     } catch (error) {
@@ -808,14 +847,25 @@ const ERP = (function () {
 
   async function updateTransactionRemote(id, fields) {
     checkTransactionFields(fields);
+    const cur = getTransactions().find(t => idEqual(t.id, id)) || null;
     const payload = {
       trx_date: fields.date,
-      reference_no: fields.invoice ? String(fields.invoice) : null,
       description: fields.description || "-",
       amount: Number(fields.amount),
       debit_account_id: fields.debitAccountId,
       credit_account_id: fields.creditAccountId
     };
+    // Nomor yang tersimpan di raw_input (karena kembar) tidak disentuh kalau tidak diubah.
+    const keepRawRef = !!(cur && cur.refInRaw && String(fields.invoice || "") === String(cur.invoice || ""));
+    if (!keepRawRef) {
+      payload.reference_no = fields.invoice ? String(fields.invoice) : null;
+      if (cur && cur.refInRaw) {
+        const raw = {};
+        if (cur.source) raw.erpSource = cur.source;
+        if (cur.sourceId) raw.sourceId = cur.sourceId;
+        payload.raw_input = Object.keys(raw).length ? raw : null;
+      }
+    }
     const { data, error } = await remoteClient()
       .from("transactions")
       .update(payload)
@@ -887,6 +937,8 @@ const ERP = (function () {
 
     const toInsert = prepared.filter(item => !existing[item.row.id]);
     result.reused = prepared.length - toInsert.length;
+
+    dedupeRowReferences(toInsert.map(item => item.row), takenReferences(remote));
 
     await insertTransactionRows(toInsert.map(item => item.row));
     result.imported = toInsert.length;
