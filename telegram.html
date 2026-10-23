@@ -87,6 +87,7 @@
 </div>
 
 <script src="assets/app.js"></script>
+<script src="assets/parser.js"></script>
 <script>
 
   ERP.initLayout({
@@ -227,6 +228,48 @@
     });
   }
 
+  function formatMoneyId(n) {
+    return "Rp " + Number(n || 0).toLocaleString("id-ID");
+  }
+
+  function formatYmd(ymd) {
+    const p = String(ymd || "").split("-");
+    if (p.length !== 3) return ymd || "";
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  // Usulan jurnal dari mesin pembaca. Hanya tampilan; belum memposting apa pun.
+  function proposalHtml(text) {
+    if (!window.TxParser) return "";
+    let p;
+    try {
+      p = TxParser.parse(text || "", ERP.getActiveAccounts(), { today: new Date() });
+    } catch (e) {
+      return "";
+    }
+    const esc = ERP.escapeHTML;
+    const acc = a => a ? esc(a.code + " " + a.name) : "<em>belum dikenali</em>";
+    const box = "margin-top:8px; padding:8px 10px; border-radius:8px; font-size:13px; line-height:1.5;";
+
+    if (!p.ok) {
+      const what = p.missing.length ? p.missing.join(", ") : "data";
+      return `<div style="${box} border:1px solid #fde68a; background:#fffbeb">
+        <strong>Belum lengkap</strong>: ${esc(what)} belum dikenali. Catat manual di halaman Transaksi.
+        ${p.amount ? "<div>Nominal terbaca: " + esc(formatMoneyId(p.amount)) + "</div>" : ""}
+      </div>`;
+    }
+    const notes = p.notes.map(n => "<div>⚠ " + esc(n) + "</div>").join("");
+    const border = p.status === "lengkap" ? "#bbf7d0" : "#fde68a";
+    const bg = p.status === "lengkap" ? "#f0fdf4" : "#fffbeb";
+    return `<div style="${box} border:1px solid ${border}; background:${bg}">
+      <strong>Usulan: ${esc(p.label)}</strong> · ${esc(formatYmd(p.date))} · ${esc(formatMoneyId(p.amount))}
+      <div>Debit: ${acc(p.debit)}</div>
+      <div>Kredit: ${acc(p.credit)}</div>
+      ${notes}
+    </div>`;
+  }
+
   function actionButtons(row) {
     const id = ERP.escapeHTML(row.id);
     if (row.status === "new") {
@@ -260,7 +303,7 @@
     body.innerHTML = rows.map(row => `
       <tr>
         <td>${ERP.escapeHTML(formatDateTime(row.created_at))}</td>
-        <td style="white-space:pre-wrap; word-break:break-word">${ERP.escapeHTML(row.text || "")}</td>
+        <td style="word-break:break-word"><div style="white-space:pre-wrap">${ERP.escapeHTML(row.text || "")}</div>${row.status === "new" ? proposalHtml(row.text) : ""}</td>
         <td>${actionButtons(row)}</td>
       </tr>`).join("");
   }
