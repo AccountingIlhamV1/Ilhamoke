@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kotak Masuk Telegram - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/auth.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Kotak Masuk Telegram</h1>
+          <p id="topbarSubtitle">Pesan transaksi dari bot Telegram untuk usaha yang sedang aktif</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif di server.<br><br>
+        Buat atau pilih usaha terlebih dahulu, dan pastikan sudah diimpor ke akun.<br><br>
+        <a href="business.html">Buka Data Usaha</a>
+      </div>
+
+      <div id="messageBox" class="info-box" style="display:none"></div>
+
+      <div class="card" id="linkCard">
+        <h2>🔗 Tautan Telegram</h2>
+        <p class="card-sub" id="linkStatus">Memuat status...</p>
+
+        <div id="linkActions" style="display:none; margin-bottom:12px">
+          <button type="button" class="btn-edit btn-sm" id="useActiveButton">Pakai usaha aktif ERP untuk Telegram</button>
+          <button type="button" class="btn-delete btn-sm" id="unlinkButton">Putuskan tautan</button>
+        </div>
+
+        <button type="button" class="btn-save" id="createCodeButton">Buat kode tautan</button>
+
+        <div id="codeBox" style="display:none; margin-top:14px">
+          <p class="card-sub">Kirim pesan ini ke bot Telegram kamu. Kode berlaku 15 menit dan hanya bisa dipakai sekali:</p>
+          <p style="font-size:22px; font-weight:800; letter-spacing:1px; margin:8px 0" id="codeText"></p>
+          <button type="button" class="btn-cancel btn-sm" id="copyCodeButton">Salin</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📥 Pesan Masuk</h2>
+        <p class="card-sub">Pesan yang dikirim lewat Telegram ke usaha aktif. Catat transaksinya di halaman Transaksi, lalu tandai Selesai di sini.
+          <a href="transactions.html">Buka Transaksi</a></p>
+
+        <div style="margin-bottom:12px">
+          <button type="button" class="btn-save btn-sm" data-filter="new" id="tabNew">Baru</button>
+          <button type="button" class="btn-cancel btn-sm" data-filter="confirmed" id="tabConfirmed">Selesai</button>
+          <button type="button" class="btn-cancel btn-sm" data-filter="rejected" id="tabRejected">Ditolak</button>
+          <button type="button" class="btn-cancel btn-sm" id="refreshButton">🔄 Muat ulang</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="table-wide">
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Pesan</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="inboxTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "telegram",
+    title: "Kotak Masuk Telegram",
+    subtitle: "Pesan transaksi dari bot Telegram untuk usaha yang sedang aktif"
+  });
+
+  const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const CODE_LENGTH = 8;
+  const CODE_MINUTES = 15;
+  const STATUS_LABEL = { "new": "Baru", confirmed: "Selesai", rejected: "Ditolak" };
+
+  let filter = "new";
+  let currentCode = "";
+  let pollTimer = null;
+
+  const $ = id => document.getElementById(id);
+
+  function client() { return ERPAuth.client; }
+  function me() { return ERPAuth.getUser(); }
+
+  function activeServerBusiness() {
+    const business = ERP.getActiveBusiness();
+    return business && ERP.isUuid(business.id) ? business : null;
+  }
+
+  function showMessage(text, isError) {
+    const box = $("messageBox");
+    if (!text) { box.style.display = "none"; return; }
+    box.textContent = text;
+    box.style.display = "block";
+    box.style.borderColor = isError ? "#fecaca" : "";
+    box.style.color = isError ? "#991b1b" : "";
+  }
+
+  function errText(error) {
+    const m = String((error && error.message) || error || "");
+    return m || "Terjadi kesalahan. Coba lagi.";
+  }
+
+  function randomCode() {
+    const bytes = new Uint8Array(CODE_LENGTH);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => CODE_CHARS[b % CODE_CHARS.length]).join("");
+  }
+
+  function formatDateTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function businessLabel(id) {
+    const found = ERP.getBusinesses().find(b => ERP.idEqual(b.id, id));
+    return found ? found.name : "usaha lain";
+  }
+
+  /* ---------- tautan ---------- */
+
+  let linked = null;
+
+  async function loadLink() {
+    const result = await client().from("telegram_users").select("chat_id, active_business_id, telegram_username").limit(1);
+    if (result.error) { $("linkStatus").textContent = "Gagal memuat status tautan: " + errText(result.error); return; }
+
+    linked = result.data && result.data[0] ? result.data[0] : null;
+    if (!linked) {
+      $("linkStatus").textContent = "Belum ada akun Telegram yang tertaut. Buat kode tautan, lalu kirim ke bot.";
+      $("linkActions").style.display = "none";
+      return;
+    }
+    const who = linked.telegram_username ? "@" + linked.telegram_username : "akun Telegram";
+    const biz = linked.active_business_id ? businessLabel(linked.active_business_id) : "(belum dipilih)";
+    $("linkStatus").textContent = who + " tertaut. Pesan dari Telegram masuk ke usaha: " + biz + ".";
+    $("linkActions").style.display = "block";
+  }
+
+  async function createCode() {
+    const user = me();
+    if (!user || !user.id) { showMessage("Sesi login belum siap. Muat ulang halaman.", true); return; }
+    $("createCodeButton").disabled = true;
+    showMessage("");
+    try {
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = randomCode();
+        const expires = new Date(Date.now() + CODE_MINUTES * 60000).toISOString();
+        const result = await client().from("telegram_link_codes").insert({ code, user_id: user.id, expires_at: expires });
+        if (!result.error) {
+          currentCode = code;
+          $("codeText").textContent = "/start " + code;
+          $("codeBox").style.display = "block";
+          return;
+        }
+        lastError = result.error;
+        if (!/duplicate|unique/i.test(errText(result.error))) break;
+      }
+      showMessage("Gagal membuat kode: " + errText(lastError), true);
+    } finally {
+      $("createCodeButton").disabled = false;
+    }
+  }
+
+  async function copyCode() {
+    const text = "/start " + currentCode;
+    try {
+      await navigator.clipboard.writeText(text);
+      showMessage("Tersalin: " + text);
+    } catch (e) {
+      showMessage("Tidak bisa menyalin otomatis. Salin tulisan kode secara manual.", true);
+    }
+  }
+
+  async function useActiveBusiness() {
+    const business = activeServerBusiness();
+    if (!business || !linked) return;
+    const result = await client().from("telegram_users").update({ active_business_id: business.id }).eq("chat_id", linked.chat_id);
+    if (result.error) { showMessage("Gagal mengganti usaha: " + errText(result.error), true); return; }
+    showMessage("Usaha Telegram diganti ke: " + business.name);
+    await loadLink();
+  }
+
+  async function unlink() {
+    if (!linked) return;
+    if (!confirm("Putuskan tautan Telegram? Pesan yang sudah masuk tetap tersimpan.")) return;
+    const result = await client().from("telegram_users").delete().eq("chat_id", linked.chat_id);
+    if (result.error) { showMessage("Gagal memutus tautan: " + errText(result.error), true); return; }
+    showMessage("Tautan diputus.");
+    await loadLink();
+  }
+
+  /* ---------- kotak masuk ---------- */
+
+  function setFilterButtons() {
+    [["new", "tabNew"], ["confirmed", "tabConfirmed"], ["rejected", "tabRejected"]].forEach(([value, id]) => {
+      $(id).className = (value === filter ? "btn-save" : "btn-cancel") + " btn-sm";
+    });
+  }
+
+  function actionButtons(row) {
+    const id = ERP.escapeHTML(row.id);
+    if (row.status === "new") {
+      return `<button class="btn-active btn-sm" data-act="confirmed" data-id="${id}">✅ Selesai</button>
+              <button class="btn-delete btn-sm" data-act="rejected" data-id="${id}">✖ Tolak</button>`;
+    }
+    return `<button class="btn-edit btn-sm" data-act="new" data-id="${id}">↩ Kembalikan ke Baru</button>`;
+  }
+
+  async function loadInbox() {
+    const body = $("inboxTable");
+    const business = activeServerBusiness();
+    if (!business) { body.innerHTML = `<tr><td colspan="3" class="empty">Belum ada usaha aktif.</td></tr>`; return; }
+
+    const result = await client().from("telegram_messages")
+      .select("id, text, status, created_at")
+      .eq("business_id", business.id)
+      .eq("status", filter)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (result.error) {
+      body.innerHTML = `<tr><td colspan="3" class="empty">Gagal memuat: ${ERP.escapeHTML(errText(result.error))}</td></tr>`;
+      return;
+    }
+    const rows = result.data || [];
+    if (rows.length === 0) {
+      body.innerHTML = `<tr><td colspan="3" class="empty">Tidak ada pesan berstatus ${STATUS_LABEL[filter]}.</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows.map(row => `
+      <tr>
+        <td>${ERP.escapeHTML(formatDateTime(row.created_at))}</td>
+        <td style="white-space:pre-wrap; word-break:break-word">${ERP.escapeHTML(row.text || "")}</td>
+        <td>${actionButtons(row)}</td>
+      </tr>`).join("");
+  }
+
+  async function changeStatus(id, status) {
+    const result = await client().from("telegram_messages").update({ status }).eq("id", id);
+    if (result.error) { showMessage("Gagal mengubah status: " + errText(result.error), true); return; }
+    showMessage("");
+    await loadInbox();
+  }
+
+  $("inboxTable").addEventListener("click", function (event) {
+    const button = event.target.closest("button[data-act]");
+    if (!button) return;
+    changeStatus(button.getAttribute("data-id"), button.getAttribute("data-act"));
+  });
+
+  document.querySelectorAll("button[data-filter]").forEach(button => {
+    button.addEventListener("click", function () {
+      filter = button.getAttribute("data-filter");
+      setFilterButtons();
+      loadInbox();
+    });
+  });
+
+  $("refreshButton").addEventListener("click", () => { loadLink(); loadInbox(); });
+  $("createCodeButton").addEventListener("click", createCode);
+  $("copyCodeButton").addEventListener("click", copyCode);
+  $("useActiveButton").addEventListener("click", useActiveBusiness);
+  $("unlinkButton").addEventListener("click", unlink);
+
+  function start() {
+    setFilterButtons();
+    if (!activeServerBusiness()) $("noBusinessWarning").style.display = "block";
+    loadLink();
+    loadInbox();
+    // Cek pesan baru tiap 20 detik selama halaman terlihat.
+    pollTimer = setInterval(function () {
+      if (!document.hidden) loadInbox();
+    }, 20000);
+  }
+
+  ERPAuth.onReady(start);
+
+</script>
+
+</body>
+</html>
