@@ -604,6 +604,67 @@ const ERP = (function () {
     return { imported: toInsert.length, reused: reused };
   }
 
+  /* ---------- KEAMANAN SALINAN DATA DI BROWSER ----------
+     Data asli ada di server (per akun). Browser hanya menyimpan salinan
+     supaya cepat. Salinan itu dibersihkan saat Keluar, dan juga otomatis
+     kalau akun yang login berbeda dari pemilik salinan sebelumnya.
+     Pemetaan akun impor kasir (ilhamERP_importMap) sengaja dipertahankan:
+     isinya hanya preferensi pemetaan, bukan angka keuangan. */
+
+  const CACHE_OWNER_KEY = "ilhamERP_cacheOwner";
+  const KEEP_ON_CLEAR = ["ilhamERP_importMap"];
+
+  // Jumlah data lama (id bukan UUID) yang belum dikirim ke server.
+  function countLegacyData() {
+    return [getBusinesses, getAccounts, getTransactions, getAdjustments,
+            getClosingEntries, getContracts, getRecognitions]
+      .reduce((n, read) => n + read().filter(x => x && !isUuid(x.id)).length, 0);
+  }
+
+  function clearLocalCache() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.indexOf("ilhamERP_") === 0 && KEEP_ON_CLEAR.indexOf(key) === -1) keys.push(key);
+    }
+    keys.forEach(key => localStorage.removeItem(key));
+    try { sessionStorage.removeItem("ilhamERP_syncReloadAt"); } catch (e) {}
+  }
+
+  // Dipanggil setelah login terverifikasi. true = salinan milik akun lain sudah dibersihkan.
+  function ensureCacheOwner(user) {
+    if (!user || !user.id) return false;
+
+    const owner = localStorage.getItem(CACHE_OWNER_KEY);
+    if (!owner) {
+      // Pertama kali setelah pembaruan: salinan yang ada dianggap milik akun ini.
+      localStorage.setItem(CACHE_OWNER_KEY, user.id);
+      return false;
+    }
+    if (owner === user.id) return false;
+
+    // Akun berbeda memakai browser ini: simpan cadangan kalau ada data lama, lalu bersihkan.
+    if (countLegacyData() > 0) downloadBackup();
+    clearLocalCache();
+    localStorage.setItem(CACHE_OWNER_KEY, user.id);
+    return true;
+  }
+
+  function signOutSafely() {
+    const legacy = countLegacyData();
+    if (legacy > 0) {
+      const ok = confirm(
+        "Masih ada " + legacy + " data lama di browser ini yang belum dikirim ke akunmu (usaha, COA, transaksi, dan lainnya).\n\n" +
+        "Kalau keluar sekarang, data itu akan dihapus dari browser ini. File cadangan akan diunduh dulu.\n\n" +
+        "Tekan OK untuk tetap keluar, atau Batal untuk kembali dan mengimpornya dulu."
+      );
+      if (!ok) return;
+      downloadBackup();
+    }
+    clearLocalCache();
+    ERPAuth.signOut();
+  }
+
   /* ---------- CHART OF ACCOUNTS ---------- */
 
   function getAccounts() {
@@ -1913,7 +1974,7 @@ const ERP = (function () {
       `;
       sidebar.appendChild(userBox);
 
-      document.getElementById("logoutBtn").addEventListener("click", () => ERPAuth.signOut());
+      document.getElementById("logoutBtn").addEventListener("click", () => signOutSafely());
       ERPAuth.onReady(user => {
         const emailEl = document.getElementById("sidebarUserEmail");
         if (emailEl) emailEl.textContent = user.email || "";
@@ -1970,6 +2031,10 @@ const ERP = (function () {
     updateBusinessRemote,
     deleteBusinessRemote,
     importLegacyBusinesses,
+    ensureCacheOwner,
+    signOutSafely,
+    countLegacyData,
+    clearLocalCache,
     getLegacyAccounts,
     syncAccounts,
     createAccountsRemote,
@@ -2045,7 +2110,12 @@ const ERP = (function () {
    Kalau ada perubahan, muat ulang halaman satu kali supaya tampilan
    memakai data terbaru (pengaman: tidak mengulang dalam 10 detik). */
 if (window.ERPAuth) {
-  ERPAuth.onReady(function () {
+  ERPAuth.onReady(function (user) {
+    // Salinan data milik akun lain? Bersihkan lalu muat ulang sekali.
+    if (ERP.ensureCacheOwner(user)) {
+      location.reload();
+      return;
+    }
     Promise.all([ERP.syncBusinesses(), ERP.syncAccounts(), ERP.syncTransactions(), ERP.syncOthers()]).then(function (results) {
       if (!results.some(Boolean)) return;
       const last = Number(sessionStorage.getItem("ilhamERP_syncReloadAt") || 0);
