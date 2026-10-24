@@ -1886,6 +1886,7 @@ const ERP = (function () {
     { id: "business",          label: "Data Usaha",            icon: "🏢", href: "business.html",          group: "Master Data" },
     { id: "accounts",          label: "Chart of Accounts",     icon: "📋", href: "accounts.html",          group: "Master Data" },
     { id: "transactions",      label: "Transaksi",             icon: "🧾", href: "transactions.html",      group: "Master Data" },
+    { id: "products",          label: "Bahan & Produk",        icon: "🧪", href: "products.html",          group: "Master Data" },
     { id: "setup",             label: "Persiapan Awal",        icon: "🚀", href: "setup.html",             group: "Master Data" },
     { id: "telegram",          label: "Kotak Masuk Telegram",  icon: "✈️", href: "telegram.html",          group: "Master Data" },
     { id: "journal",           label: "Jurnal Umum",           icon: "📖", href: "journal.html",           group: "Siklus Akuntansi" },
