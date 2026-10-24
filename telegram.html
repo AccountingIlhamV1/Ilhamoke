@@ -270,6 +270,24 @@
     </div>`;
   }
 
+  // Data lengkap dari menu tombol Telegram (bukan tebakan). Akun dicari di COA usaha aktif.
+  function menuHtml(row) {
+    const accounts = ERP.getActiveAccounts();
+    const find = id => accounts.find(a => ERP.idEqual(a.id, id)) || null;
+    const esc = ERP.escapeHTML;
+    const acc = a => a ? esc(a.code + " " + a.name) : "<em>akun tidak ditemukan (mungkin sudah dihapus)</em>";
+    return `<div style="margin-top:8px; padding:8px 10px; border-radius:8px; font-size:13px; line-height:1.5; border:1px solid #bfdbfe; background:#eff6ff">
+      <strong>Dari menu tombol</strong> · ${esc(formatYmd(row.trx_date))} · ${esc(formatMoneyId(row.amount))}
+      <div>Debit: ${acc(find(row.debit_account_id))}</div>
+      <div>Kredit: ${acc(find(row.credit_account_id))}</div>
+    </div>`;
+  }
+
+  function detailHtml(row) {
+    if (row.origin === "menu") return menuHtml(row);
+    return row.status === "new" ? proposalHtml(row.text) : "";
+  }
+
   function actionButtons(row) {
     const id = ERP.escapeHTML(row.id);
     if (row.status === "new") {
@@ -285,7 +303,7 @@
     if (!business) { body.innerHTML = `<tr><td colspan="3" class="empty">Belum ada usaha aktif.</td></tr>`; return; }
 
     const result = await client().from("telegram_messages")
-      .select("id, text, status, created_at")
+      .select("id, text, status, created_at, origin, kind, amount, trx_date, debit_account_id, credit_account_id")
       .eq("business_id", business.id)
       .eq("status", filter)
       .order("created_at", { ascending: false })
@@ -303,7 +321,7 @@
     body.innerHTML = rows.map(row => `
       <tr>
         <td>${ERP.escapeHTML(formatDateTime(row.created_at))}</td>
-        <td style="word-break:break-word"><div style="white-space:pre-wrap">${ERP.escapeHTML(row.text || "")}</div>${row.status === "new" ? proposalHtml(row.text) : ""}</td>
+        <td style="word-break:break-word"><div style="white-space:pre-wrap">${ERP.escapeHTML(row.text || "")}</div>${detailHtml(row)}</td>
         <td>${actionButtons(row)}</td>
       </tr>`).join("");
   }
