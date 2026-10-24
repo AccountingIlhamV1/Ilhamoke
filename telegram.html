@@ -57,6 +57,15 @@
       </div>
 
       <div class="card">
+        <h2>⚙️ Posting Otomatis</h2>
+        <p class="card-sub">Kalau aktif, transaksi dari <strong>menu tombol</strong> Telegram langsung masuk ke Transaksi (dan laporan) begitu kamu menekan Simpan di bot. Kalau mati, semuanya masuk Kotak Masuk sebagai draf. Pesan ketikan bebas selalu menjadi draf. Hanya pemilik usaha yang bisa mengubahnya.</p>
+        <label style="display:flex; gap:10px; align-items:center; font-weight:700">
+          <input type="checkbox" id="autoMenuToggle" checked>
+          <span>Posting otomatis dari menu tombol</span>
+        </label>
+      </div>
+
+      <div class="card">
         <h2>📥 Pesan Masuk</h2>
         <p class="card-sub">Pesan yang dikirim lewat Telegram ke usaha aktif. Catat transaksinya di halaman Transaksi, lalu tandai Selesai di sini.
           <a href="transactions.html">Buka Transaksi</a></p>
@@ -220,6 +229,30 @@
     await loadLink();
   }
 
+  /* ---------- posting otomatis ---------- */
+
+  async function loadSettings() {
+    const business = activeServerBusiness();
+    if (!business) return;
+    const result = await client().from("business_telegram_settings").select("auto_post_menu").eq("business_id", business.id).limit(1);
+    if (result.error) return;
+    const row = result.data && result.data[0];
+    $("autoMenuToggle").checked = row ? row.auto_post_menu !== false : true;   // bawaan: aktif
+  }
+
+  async function saveSettings() {
+    const business = activeServerBusiness();
+    if (!business) return;
+    const want = $("autoMenuToggle").checked;
+    const result = await client().from("business_telegram_settings").upsert({ business_id: business.id, auto_post_menu: want }, { onConflict: "business_id" });
+    if (result.error) {
+      showMessage("Gagal menyimpan pengaturan (hanya pemilik usaha yang boleh mengubah): " + errText(result.error), true);
+      await loadSettings();
+      return;
+    }
+    showMessage(want ? "Posting otomatis dari menu tombol: AKTIF." : "Posting otomatis dari menu tombol: MATI. Semua masuk sebagai draf.");
+  }
+
   /* ---------- kotak masuk ---------- */
 
   function setFilterButtons() {
@@ -290,6 +323,13 @@
 
   function actionButtons(row) {
     const id = ERP.escapeHTML(row.id);
+    if (row.transaction_id) {
+      if (row.status === "confirmed") {
+        return `<div style="font-size:13px; margin-bottom:6px">✓ Sudah jadi transaksi</div>
+                <button class="btn-delete btn-sm" data-act="void" data-id="${id}">↶ Batalkan transaksi</button>`;
+      }
+      return `<div style="font-size:13px">Transaksi dibatalkan</div>`;
+    }
     if (row.status === "new") {
       return `<button class="btn-active btn-sm" data-act="confirmed" data-id="${id}">✅ Selesai</button>
               <button class="btn-delete btn-sm" data-act="rejected" data-id="${id}">✖ Tolak</button>`;
@@ -303,7 +343,7 @@
     if (!business) { body.innerHTML = `<tr><td colspan="3" class="empty">Belum ada usaha aktif.</td></tr>`; return; }
 
     const result = await client().from("telegram_messages")
-      .select("id, text, status, created_at, origin, kind, amount, trx_date, debit_account_id, credit_account_id")
+      .select("id, text, status, created_at, origin, kind, amount, trx_date, debit_account_id, credit_account_id, transaction_id")
       .eq("business_id", business.id)
       .eq("status", filter)
       .order("created_at", { ascending: false })
@@ -333,10 +373,28 @@
     await loadInbox();
   }
 
+  async function voidTransaction(messageId) {
+    const found = await client().from("telegram_messages").select("id, transaction_id").eq("id", messageId).limit(1);
+    const row = found.data && found.data[0];
+    if (found.error || !row || !row.transaction_id) { showMessage("Transaksi tidak ditemukan.", true); return; }
+    if (!confirm("Batalkan transaksi ini? Transaksi akan hilang dari Jurnal Umum dan laporan. Jejaknya tetap tersimpan sebagai void.")) return;
+
+    const voided = await client().from("transactions").update({ status: "void" }).eq("id", row.transaction_id);
+    if (voided.error) { showMessage("Gagal membatalkan transaksi: " + errText(voided.error), true); return; }
+    const marked = await client().from("telegram_messages").update({ status: "rejected" }).eq("id", messageId);
+    if (marked.error) { showMessage("Transaksi dibatalkan, tapi status pesan belum diperbarui: " + errText(marked.error), true); }
+    else showMessage("Transaksi dibatalkan.");
+    try { await ERP.syncTransactions(); } catch (e) { /* cache diperbarui saat halaman berikut dibuka */ }
+    await loadInbox();
+  }
+
   $("inboxTable").addEventListener("click", function (event) {
     const button = event.target.closest("button[data-act]");
     if (!button) return;
-    changeStatus(button.getAttribute("data-id"), button.getAttribute("data-act"));
+    const act = button.getAttribute("data-act");
+    const id = button.getAttribute("data-id");
+    if (act === "void") voidTransaction(id);
+    else changeStatus(id, act);
   });
 
   document.querySelectorAll("button[data-filter]").forEach(button => {
@@ -347,6 +405,7 @@
     });
   });
 
+  $("autoMenuToggle").addEventListener("change", saveSettings);
   $("refreshButton").addEventListener("click", () => { loadLink(); loadInbox(); });
   $("createCodeButton").addEventListener("click", createCode);
   $("copyCodeButton").addEventListener("click", copyCode);
@@ -357,6 +416,7 @@
     setFilterButtons();
     if (!activeServerBusiness()) $("noBusinessWarning").style.display = "block";
     loadLink();
+    loadSettings();
     loadInbox();
     // Cek pesan baru tiap 20 detik selama halaman terlihat.
     pollTimer = setInterval(function () {
