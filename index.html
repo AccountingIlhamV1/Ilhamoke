@@ -30,6 +30,40 @@
 
     <main class="content">
 
+      <h2 class="section-title">Ringkasan Usaha</h2>
+
+      <div class="grid-cards" id="summaryCards">
+
+        <div class="tile">
+          <div class="tile-icon">💰</div>
+          <h3>Pendapatan Hari Ini</h3>
+          <p class="summary-value" id="sumRevenue">-</p>
+          <p id="sumRevenueNote">Memuat...</p>
+        </div>
+
+        <div class="tile">
+          <div class="tile-icon">💸</div>
+          <h3>Beban Hari Ini</h3>
+          <p class="summary-value" id="sumExpense">-</p>
+          <p id="sumExpenseNote">Memuat...</p>
+        </div>
+
+        <div class="tile">
+          <div class="tile-icon">📊</div>
+          <h3>Selisih Hari Ini</h3>
+          <p class="summary-value" id="sumProfit">-</p>
+          <p id="sumProfitNote">Pendapatan dikurangi beban.</p>
+        </div>
+
+        <div class="tile">
+          <div class="tile-icon">🏦</div>
+          <h3>Saldo Kas &amp; Bank</h3>
+          <p class="summary-value" id="sumCash">-</p>
+          <p id="sumCashNote">Dari seluruh transaksi.</p>
+        </div>
+
+      </div>
+
       <h2 class="section-title">Master Data</h2>
 
       <div class="grid-cards">
@@ -158,6 +192,79 @@
     title: "Dashboard",
     subtitle: "Ilham ERP — Accounting Learning System"
   });
+</script>
+
+<script>
+  /* Kartu ringkasan: angka dibaca dari data ERP yang sudah disinkronkan
+     dari Supabase (termasuk transaksi dari bot Telegram). Hanya transaksi
+     berstatus posted yang dihitung, sama seperti perintah /omzet di bot. */
+  (function () {
+    function setText(id, text) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function jakartaToday() {
+      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+    }
+
+    function renderSummary() {
+      try {
+        var business = ERP.getActiveBusiness();
+        if (!business) {
+          setText("sumRevenue", "-");
+          setText("sumRevenueNote", "Belum ada usaha aktif.");
+          setText("sumExpense", "-");
+          setText("sumExpenseNote", "Pilih usaha di Data Usaha.");
+          setText("sumProfit", "-");
+          setText("sumCash", "-");
+          return;
+        }
+
+        var accounts = ERP.getActiveAccounts();
+        var byId = {};
+        accounts.forEach(function (a) { byId[String(a.id)] = a; });
+
+        function isGroup(id, groups) {
+          var a = byId[String(id)];
+          return !!a && groups.indexOf(a.group) !== -1;
+        }
+        function isCash(id) {
+          var a = byId[String(id)];
+          return !!a && !!a.isCash;
+        }
+
+        var today = jakartaToday();
+        var revenue = 0, expense = 0, count = 0, cash = 0;
+
+        ERP.getActiveTransactions().forEach(function (t) {
+          var amt = Number(t.amount) || 0;
+
+          if (isCash(t.debitAccountId)) cash += amt;
+          if (isCash(t.creditAccountId)) cash -= amt;
+
+          if (String(t.date) !== today) return;
+
+          if (isGroup(t.creditAccountId, ["Pendapatan"])) { revenue += amt; count++; }
+          if (isGroup(t.debitAccountId, ["Pendapatan"])) revenue -= amt;
+          if (isGroup(t.debitAccountId, ["Beban"])) expense += amt;
+          if (isGroup(t.creditAccountId, ["Beban"])) expense -= amt;
+        });
+
+        setText("sumRevenue", ERP.formatMoney(revenue));
+        setText("sumRevenueNote", count + " transaksi");
+        setText("sumExpense", ERP.formatMoney(expense));
+        setText("sumExpenseNote", "Harga pokok (HPP) belum dihitung.");
+        setText("sumProfit", ERP.formatMoney(revenue - expense));
+        setText("sumCash", ERP.formatMoney(cash));
+      } catch (error) {
+        console.error("Gagal menyusun ringkasan:", error);
+        setText("sumRevenueNote", "Ringkasan belum bisa dimuat.");
+      }
+    }
+
+    renderSummary();
+  })();
 </script>
 
 </body>
