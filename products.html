@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ilham ERP — Bahan &amp; Produk</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/auth.js"></script>
+<style>
+  /* Gaya khusus halaman ini (sederhana, ikut warna tema yang berlaku). */
+  .hpp-card { border: 1px solid rgba(128,128,128,.35); border-radius: 12px; padding: 14px; margin: 0 0 12px; }
+  .hpp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .hpp-gap { margin-top: 10px; }
+  .hpp-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 0; }
+  .hpp-field label { font-size: 12px; opacity: .75; }
+  .hpp-in, .hpp-card select { font: inherit; color: inherit; background: rgba(128,128,128,.12);
+    border: 1px solid rgba(128,128,128,.4); border-radius: 8px; padding: 9px 10px;
+    width: 100%; min-width: 0; box-sizing: border-box; }
+  .hpp-card option { color: #111; background: #fff; }
+  .hpp-btn { font: inherit; color: inherit; background: transparent; border: 1px solid rgba(128,128,128,.5);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  .hpp-muted { opacity: .72; font-size: 13px; margin: 4px 0; }
+  .hpp-msg { min-height: 20px; margin: 0 0 8px; font-size: 14px; }
+  .hpp-item { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .hpp-item-main { flex: 1 1 200px; min-width: 0; }
+  .hpp-item-main b { word-break: break-word; }
+  .hpp-recipe select { flex: 2 1 160px; }
+  .hpp-recipe .hpp-in { flex: 1 1 80px; width: auto; }
+  .hpp-unit { min-width: 40px; font-size: 13px; opacity: .8; }
+  .hpp-sub { min-width: 80px; font-size: 13px; text-align: right; }
+  .hpp-summary { margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(128,128,128,.12); font-size: 14px; }
+  .hpp-radio { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 4px; font-size: 14px; }
+  .hpp-radio label { display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Bahan &amp; Produk</h1>
+          <p id="topbarSubtitle">Resep dan HPP</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+      <div id="hppRoot">Memuat...</div>
+    </main>
+
+  </div>
+
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+  ERP.initLayout({
+    active: "products",
+    title: "Bahan & Produk",
+    subtitle: "Resep dan HPP otomatis"
+  });
+</script>
+<script>
+(function () {
+  "use strict";
+
+  var sb = window.ERPAuth && ERPAuth.client;
+  var root = document.getElementById("hppRoot");
+  var esc = ERP.escapeHTML;
+  var money = ERP.formatMoney;
+  var UNITS = ["kg", "gram", "liter", "ml", "pcs", "butir", "bungkus", "porsi", "botol", "sachet"];
+
+  var biz = null;
+  var materials = [];
+  var products = [];
+  var recipe = [];
+  var matEditId = null;
+  var ed = null;       // produk yang sedang diedit (null = tidak ada)
+  var busy = false;
+
+  /* ---------- Bantu ---------- */
+
+  // Terima "12000", "12.000", "12,5", "Rp 12.000".
+  function parseNum(text) {
+    var s = String(text == null ? "" : text).replace(/rp/gi, "").replace(/\s+/g, "");
+    if (!s) return NaN;
+    if (s.indexOf(",") !== -1) s = s.replace(/\./g, "").replace(",", ".");
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+    return /^(\d+\.?\d*|\.\d+)$/.test(s) ? parseFloat(s) : NaN;
+  }
+
+  // Nilai awal kolom rupiah: 12000 -> "12.000".
+  function fmtInput(n) {
+    var x = Number(n);
+    return isFinite(x) ? x.toLocaleString("id-ID", { maximumFractionDigits: 2 }) : "";
+  }
+
+  // Beri titik ribuan otomatis saat mengetik kolom rupiah (koma = desimal).
+  function liveFormat(el) {
+    var raw = el.value;
+    var pos = el.selectionStart == null ? raw.length : el.selectionStart;
+    var before = raw.slice(0, pos).replace(/[^\d,]/g, "").length;
+    var parts = raw.replace(/[^\d,]/g, "").split(",");
+    var intPart = parts[0].replace(/^0+(?=\d)/, "");
+    var out = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    if (parts.length > 1) out += "," + parts.slice(1).join("").slice(0, 2);
+    el.value = out;
+    var count = 0, i = 0;
+    while (i < out.length && count < before) {
+      if (/[\d,]/.test(out.charAt(i))) count++;
+      i++;
+    }
+    try { el.setSelectionRange(i, i); } catch (e) { /* abaikan */ }
+  }
+
+  function qtyText(n) { return String(+Number(n).toFixed(4)).replace(".", ","); }
+
+  function matById(id) {
+    for (var i = 0; i < materials.length; i++) if (materials[i].id === id) return materials[i];
+    return null;
+  }
+
+  function recipeOf(productId) {
+    return recipe.filter(function (r) { return r.product_id === productId; });
+  }
+
+  function costFromRows(rows) {
+    var total = 0;
+    rows.forEach(function (r) {
+      var m = matById(r.material_id);
+      var q = typeof r.qty === "number" ? r.qty : parseNum(r.qty);
+      if (m && isFinite(q)) total += q * Number(m.price);
+    });
+    return total;
+  }
+
+  function costOfProduct(p) {
+    if (p.cost_override !== null && p.cost_override !== undefined) return Number(p.cost_override);
+    var rows = recipeOf(p.id);
+    return rows.length ? costFromRows(rows) : null;
+  }
+
+  function profitText(sell, cost) {
+    var gp = sell - cost;
+    var pct = sell > 0 ? " (" + Math.round(gp / sell * 100) + "%)" : "";
+    return money(gp) + pct;
+  }
+
+  function friendly(error) {
+    var code = error && error.code;
+    var msg = String((error && error.message) || "");
+    if (code === "23505") return "Nama itu sudah dipakai. Gunakan nama lain.";
+    if (code === "23503") return "Bahan ini masih dipakai di resep produk. Lepas dulu dari resepnya.";
+    if (/failed to fetch|network/i.test(msg)) return "Tidak bisa terhubung. Periksa koneksi lalu coba lagi.";
+    return "Gagal: " + (msg || "kesalahan tidak diketahui");
+  }
+
+  function notify(text, isError) {
+    var el = document.getElementById("hppMsg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.style.color = isError ? "#d33" : "inherit";
+  }
+
+  function field(label, inner) {
+    return '<div class="hpp-field"><label>' + label + '</label>' + inner + '</div>';
+  }
+
+  function val(id) {
+    var el = document.getElementById(id);
+    return el ? el.value : "";
+  }
+
+  /* ---------- Data ---------- */
+
+  async function load() {
+    var r = await Promise.all([
+      sb.from("materials").select("id,name,unit,price").eq("business_id", biz.id).order("name"),
+      sb.from("products").select("id,name,sell_price,cost_override,active").eq("business_id", biz.id).order("name"),
+      sb.from("product_recipe").select("product_id,material_id,qty").eq("business_id", biz.id)
+    ]);
+    for (var i = 0; i < r.length; i++) if (r[i].error) throw r[i].error;
+    materials = r[0].data || [];
+    products = r[1].data || [];
+    recipe = (r[2].data || []).map(function (x) {
+      return { product_id: x.product_id, material_id: x.material_id, qty: Number(x.qty) };
+    });
+  }
+
+  async function reload() {
+    await load();
+    renderAll();
+  }
+
+  /* ---------- Tampilan ---------- */
+
+  function skeleton() {
+    root.innerHTML =
+      '<p class="hpp-muted">Usaha: <b>' + esc(biz.name || "") + '</b></p>' +
+      '<p id="hppMsg" class="hpp-msg" role="status"></p>' +
+      '<h2 class="section-title">1. Bahan Baku</h2>' +
+      '<p class="hpp-muted">Daftarkan bahan yang dibeli beserta harga per satuannya. Usaha dagang boleh melewati bagian ini.</p>' +
+      '<div class="hpp-card" id="hppMatForm"></div>' +
+      '<div id="hppMatList"></div>' +
+      '<h2 class="section-title">2. Produk &amp; Resep</h2>' +
+      '<p class="hpp-muted">Isi harga jual, lalu pemakaian bahan untuk 1 produk. HPP dihitung otomatis dari harga bahan.</p>' +
+      '<div id="hppEditor"></div>' +
+      '<div id="hppProdList"></div>';
+  }
+
+  function renderMatForm() {
+    var m = matEditId ? matById(matEditId) : null;
+    document.getElementById("hppMatForm").innerHTML =
+      '<div class="hpp-row">' +
+        field("Nama bahan", '<input class="hpp-in" id="matName" maxlength="80" placeholder="Contoh: Tepung terigu" value="' + esc(m ? m.name : "") + '">') +
+        field("Satuan", '<input class="hpp-in" id="matUnit" list="hppUnits" maxlength="20" placeholder="kg" value="' + esc(m ? m.unit : "") + '">') +
+        field("Harga per satuan (Rp)", '<input class="hpp-in" id="matPrice" inputmode="decimal" placeholder="12000" value="' + esc(m ? fmtInput(m.price) : "") + '">') +
+      '</div>' +
+      '<datalist id="hppUnits">' + UNITS.map(function (u) { return '<option value="' + u + '">'; }).join("") + '</datalist>' +
+      '<div class="hpp-row hpp-gap">' +
+        '<button type="button" class="btn btn-primary" data-act="matSave">' + (m ? "Simpan perubahan" : "Tambah bahan") + '</button>' +
+        (m ? '<button type="button" class="hpp-btn" data-act="matCancel">Batal</button>' : "") +
+      '</div>';
+  }
+
+  function renderMatList() {
+    var box = document.getElementById("hppMatList");
+    if (!materials.length) {
+      box.innerHTML = '<p class="hpp-muted">Belum ada bahan.</p>';
+      return;
+    }
+    box.innerHTML = materials.map(function (m) {
+      return '<div class="hpp-card hpp-item">' +
+        '<div class="hpp-item-main"><b>' + esc(m.name) + '</b><div class="hpp-muted">' +
+          money(m.price) + ' per ' + esc(m.unit) + '</div></div>' +
+        '<div class="hpp-row">' +
+          '<button type="button" class="hpp-btn" data-act="matEdit" data-id="' + esc(m.id) + '">Ubah</button>' +
+          '<button type="button" class="hpp-btn" data-act="matDel" data-id="' + esc(m.id) + '">Hapus</button>' +
+        '</div></div>';
+    }).join("");
+  }
+
+  function renderProdList() {
+    var box = document.getElementById("hppProdList");
+    if (!products.length) {
+      box.innerHTML = '<p class="hpp-muted">Belum ada produk.</p>';
+      return;
+    }
+    box.innerHTML = products.map(function (p) {
+      var cost = costOfProduct(p);
+      var sell = Number(p.sell_price);
+      var manual = p.cost_override !== null && p.cost_override !== undefined;
+      var line2 = cost === null
+        ? "Resep belum diisi, HPP belum dihitung."
+        : "HPP " + money(cost) + (manual ? " (modal manual)" : " (dari resep)") + " · Laba kotor " + profitText(sell, cost);
+      return '<div class="hpp-card hpp-item">' +
+        '<div class="hpp-item-main"><b>' + esc(p.name) + '</b> · ' + money(sell) +
+          '<div class="hpp-muted">' + esc(line2) + '</div>' +
+          (p.active === false ? '<div class="hpp-muted">Disembunyikan dari Kasir bot.</div>' : "") + '</div>' +
+        '<div class="hpp-row">' +
+          '<button type="button" class="hpp-btn" data-act="prodEdit" data-id="' + esc(p.id) + '">Ubah</button>' +
+          '<button type="button" class="hpp-btn" data-act="prodDel" data-id="' + esc(p.id) + '">Hapus</button>' +
+        '</div></div>';
+    }).join("");
+  }
+
+  function newEditor(p) {
+    if (!p) {
+      return { id: null, name: "", sell: "", mode: "recipe", manual: "", active: true, rows: [{ material_id: "", qty: "" }] };
+    }
+    var manual = p.cost_override !== null && p.cost_override !== undefined;
+    var rows = recipeOf(p.id).map(function (r) { return { material_id: r.material_id, qty: qtyText(r.qty) }; });
+    return {
+      id: p.id,
+      name: p.name,
+      sell: fmtInput(p.sell_price),
+      mode: manual ? "manual" : "recipe",
+      manual: manual ? fmtInput(p.cost_override) : "",
+      active: p.active !== false,
+      rows: rows.length ? rows : [{ material_id: "", qty: "" }]
+    };
+  }
+
+  function rowHtml(r, i) {
+    var m = matById(r.material_id);
+    var options = '<option value="">Pilih bahan</option>' + materials.map(function (x) {
+      return '<option value="' + esc(x.id) + '"' + (x.id === r.material_id ? " selected" : "") + '>' +
+        esc(x.name) + ' (' + esc(x.unit) + ')</option>';
+    }).join("");
+    return '<div class="hpp-row hpp-recipe hpp-gap">' +
+      '<select class="rcMat" data-i="' + i + '">' + options + '</select>' +
+      '<input class="hpp-in rcQty" data-i="' + i + '" inputmode="decimal" placeholder="Jumlah" value="' + esc(r.qty) + '">' +
+      '<span class="hpp-unit">' + esc(m ? m.unit : "") + '</span>' +
+      '<span class="hpp-sub" id="rcSub' + i + '"></span>' +
+      '<button type="button" class="hpp-btn" data-act="rcDel" data-i="' + i + '" aria-label="Hapus baris">✕</button>' +
+    '</div>';
+  }
+
+  function renderEditor() {
+    var box = document.getElementById("hppEditor");
+    if (!ed) {
+      box.innerHTML = '<div class="hpp-row" style="margin-bottom:12px"><button type="button" class="btn btn-primary" data-act="prodNew">+ Produk baru</button></div>';
+      return;
+    }
+    var recipeMode = ed.mode === "recipe";
+    box.innerHTML =
+      '<div class="hpp-card">' +
+        '<b>' + (ed.id ? "Ubah produk" : "Produk baru") + '</b>' +
+        '<div class="hpp-row hpp-gap">' +
+          field("Nama produk", '<input class="hpp-in" id="edName" maxlength="80" placeholder="Contoh: Roti coklat" value="' + esc(ed.name) + '">') +
+          field("Harga jual (Rp)", '<input class="hpp-in" id="edSell" inputmode="decimal" placeholder="5000" value="' + esc(ed.sell) + '">') +
+        '</div>' +
+        '<div class="hpp-radio">' +
+          '<label><input type="radio" name="edMode" value="recipe"' + (recipeMode ? " checked" : "") + '> Hitung dari resep</label>' +
+          '<label><input type="radio" name="edMode" value="manual"' + (!recipeMode ? " checked" : "") + '> Modal manual per satuan</label>' +
+        '</div>' +
+        (recipeMode
+          ? '<p class="hpp-muted">Isi bahan yang dipakai untuk 1 produk, dalam satuan bahan. Contoh: harga tepung per kg, maka 100 gram ditulis 0,1.</p>' +
+            (materials.length ? "" : '<p class="hpp-muted">Tambahkan bahan dulu di bagian atas.</p>') +
+            ed.rows.map(rowHtml).join("") +
+            '<div class="hpp-row hpp-gap"><button type="button" class="hpp-btn" data-act="rcAdd">+ Tambah bahan</button></div>'
+          : '<p class="hpp-muted">Cocok untuk usaha dagang: isi harga beli (modal) untuk 1 barang.</p>' +
+            '<div class="hpp-row">' + field("Modal per satuan (Rp)", '<input class="hpp-in" id="edManual" inputmode="decimal" placeholder="3000" value="' + esc(ed.manual) + '">') + '</div>') +
+        '<div class="hpp-radio"><label><input type="checkbox" id="edActive"' + (ed.active ? " checked" : "") + '> Tampilkan di Kasir bot</label></div>' +
+        '<div class="hpp-summary" id="edSummary"></div>' +
+        '<div class="hpp-row hpp-gap">' +
+          '<button type="button" class="btn btn-primary" data-act="edSave">Simpan produk</button>' +
+          '<button type="button" class="hpp-btn" data-act="edCancel">Batal</button>' +
+        '</div>' +
+      '</div>';
+    updateSummary();
+  }
+
+  function updateSummary() {
+    var el = document.getElementById("edSummary");
+    if (!el || !ed) return;
+    var sell = parseNum(ed.sell);
+    var cost;
+    if (ed.mode === "manual") {
+      cost = parseNum(ed.manual);
+    } else {
+      cost = costFromRows(ed.rows);
+      ed.rows.forEach(function (r, i) {
+        var sub = document.getElementById("rcSub" + i);
+        var m = matById(r.material_id);
+        var q = parseNum(r.qty);
+        if (sub) sub.textContent = m && isFinite(q) ? money(q * Number(m.price)) : "";
+      });
+    }
+    if (!isFinite(cost)) {
+      el.textContent = "Isi modal untuk melihat HPP.";
+      return;
+    }
+    var text = "HPP per produk: " + money(cost);
+    if (isFinite(sell) && sell > 0) text += " · Laba kotor: " + profitText(sell, cost);
+    el.textContent = text;
+  }
+
+  function renderAll() {
+    renderMatForm();
+    renderMatList();
+    renderEditor();
+    renderProdList();
+  }
+
+  /* ---------- Simpan & hapus ---------- */
+
+  async function run(task, okText) {
+    if (busy) return;
+    busy = true;
+    notify("Menyimpan...", false);
+    try {
+      await task();
+      await load();
+      renderAll();
+      notify(okText, false);
+    } catch (error) {
+      console.error(error);
+      notify(friendly(error), true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function saveMaterial() {
+    var name = val("matName").trim();
+    var unit = val("matUnit").trim() || "pcs";
+    var price = parseNum(val("matPrice"));
+    if (!name) { notify("Nama bahan wajib diisi.", true); return; }
+    if (!isFinite(price) || price < 0) { notify("Harga per satuan belum benar. Ketik angkanya saja, contoh: 12000.", true); return; }
+    var editId = matEditId;
+    run(async function () {
+      var res = editId
+        ? await sb.from("materials").update({ name: name, unit: unit, price: price }).eq("id", editId)
+        : await sb.from("materials").insert({ business_id: biz.id, name: name, unit: unit, price: price });
+      if (res.error) throw res.error;
+      matEditId = null;
+    }, editId ? "Bahan diperbarui." : "Bahan ditambahkan.");
+  }
+
+  function deleteMaterial(id) {
+    var m = matById(id);
+    if (!m || !confirm("Hapus bahan \"" + m.name + "\"?")) return;
+    run(async function () {
+      var res = await sb.from("materials").delete().eq("id", id);
+      if (res.error) throw res.error;
+      if (matEditId === id) matEditId = null;
+    }, "Bahan dihapus.");
+  }
+
+  function saveProduct() {
+    if (!ed) return;
+    var name = ed.name.trim();
+    var sell = parseNum(ed.sell);
+    if (!name) { notify("Nama produk wajib diisi.", true); return; }
+    if (!isFinite(sell) || sell < 0) { notify("Harga jual belum benar. Ketik angkanya saja, contoh: 5000.", true); return; }
+
+    var manual = null;
+    var rows = [];
+    if (ed.mode === "manual") {
+      manual = parseNum(ed.manual);
+      if (!isFinite(manual) || manual < 0) { notify("Modal per satuan belum benar.", true); return; }
+    } else {
+      var seen = {};
+      for (var i = 0; i < ed.rows.length; i++) {
+        var r = ed.rows[i];
+        var blank = !r.material_id && !String(r.qty).trim();
+        if (blank) continue;
+        var q = parseNum(r.qty);
+        if (!r.material_id) { notify("Ada baris resep yang belum memilih bahan.", true); return; }
+        if (!isFinite(q) || q <= 0) { notify("Jumlah bahan di resep harus lebih dari nol.", true); return; }
+        if (seen[r.material_id]) { notify("Satu bahan hanya boleh sekali di resep. Gabungkan jumlahnya.", true); return; }
+        seen[r.material_id] = true;
+        rows.push({ material_id: r.material_id, qty: q });
+      }
+      if (!rows.length) { notify("Isi minimal satu bahan di resep, atau pilih Modal manual.", true); return; }
+    }
+
+    var payload = { name: name, sell_price: sell, cost_override: manual, active: !!ed.active };
+    var editId = ed.id;
+
+    run(async function () {
+      var id = editId;
+      if (id) {
+        var up = await sb.from("products").update(payload).eq("id", id);
+        if (up.error) throw up.error;
+      } else {
+        payload.business_id = biz.id;
+        var ins = await sb.from("products").insert(payload).select("id").single();
+        if (ins.error) throw ins.error;
+        id = ins.data.id;
+      }
+
+      if (rows.length) {
+        var upsertRows = rows.map(function (r) {
+          return { business_id: biz.id, product_id: id, material_id: r.material_id, qty: r.qty };
+        });
+        var ur = await sb.from("product_recipe").upsert(upsertRows, { onConflict: "product_id,material_id" });
+        if (ur.error) throw ur.error;
+      }
+
+      var del = sb.from("product_recipe").delete().eq("product_id", id);
+      if (rows.length) del = del.not("material_id", "in", "(" + rows.map(function (r) { return r.material_id; }).join(",") + ")");
+      var dr = await del;
+      if (dr.error) throw dr.error;
+
+      ed = null;
+    }, "Produk disimpan.");
+  }
+
+  function deleteProduct(id) {
+    var p = null;
+    products.forEach(function (x) { if (x.id === id) p = x; });
+    if (!p || !confirm("Hapus produk \"" + p.name + "\" beserta resepnya?")) return;
+    run(async function () {
+      var res = await sb.from("products").delete().eq("id", id);
+      if (res.error) throw res.error;
+      if (ed && ed.id === id) ed = null;
+    }, "Produk dihapus.");
+  }
+
+  /* ---------- Event ---------- */
+
+  root.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    var act = btn.getAttribute("data-act");
+    var id = btn.getAttribute("data-id");
+    var i = Number(btn.getAttribute("data-i"));
+
+    if (act === "matSave") saveMaterial();
+    else if (act === "matCancel") { matEditId = null; renderMatForm(); notify("", false); }
+    else if (act === "matEdit") { matEditId = id; renderMatForm(); window.scrollTo(0, 0); }
+    else if (act === "matDel") deleteMaterial(id);
+    else if (act === "prodNew") { ed = newEditor(null); renderEditor(); notify("", false); }
+    else if (act === "prodEdit") {
+      products.forEach(function (p) { if (p.id === id) ed = newEditor(p); });
+      renderEditor();
+      notify("", false);
+    }
+    else if (act === "prodDel") deleteProduct(id);
+    else if (act === "edCancel") { ed = null; renderEditor(); notify("", false); }
+    else if (act === "edSave") saveProduct();
+    else if (act === "rcAdd" && ed) { ed.rows.push({ material_id: "", qty: "" }); renderEditor(); }
+    else if (act === "rcDel" && ed) {
+      ed.rows.splice(i, 1);
+      if (!ed.rows.length) ed.rows.push({ material_id: "", qty: "" });
+      renderEditor();
+    }
+  });
+
+  root.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t.id === "matPrice") { liveFormat(t); return; }
+    if (!ed) return;
+    if (t.id === "edName") ed.name = t.value;
+    else if (t.id === "edSell") { liveFormat(t); ed.sell = t.value; updateSummary(); }
+    else if (t.id === "edManual") { liveFormat(t); ed.manual = t.value; updateSummary(); }
+    else if (t.classList.contains("rcQty")) { ed.rows[Number(t.getAttribute("data-i"))].qty = t.value; updateSummary(); }
+  });
+
+  root.addEventListener("change", function (e) {
+    if (!ed) return;
+    var t = e.target;
+    if (t.name === "edMode") { ed.mode = t.value; renderEditor(); }
+    else if (t.id === "edActive") ed.active = t.checked;
+    else if (t.classList.contains("rcMat")) {
+      ed.rows[Number(t.getAttribute("data-i"))].material_id = t.value;
+      renderEditor();
+    }
+  });
+
+  /* ---------- Mulai ---------- */
+
+  function start() {
+    if (!sb) { root.textContent = "Layanan belum termuat. Muat ulang halaman."; return; }
+    biz = ERP.getActiveBusiness();
+    if (!biz) { root.textContent = "Belum ada usaha aktif. Pilih usaha di menu Data Usaha."; return; }
+    if (!ERP.isUuid(biz.id)) { root.textContent = "Usaha aktif belum tersinkron dengan server. Muat ulang halaman."; return; }
+    skeleton();
+    renderMatForm();
+    renderEditor();
+    load().then(renderAll).catch(function (error) {
+      console.error(error);
+      notify(friendly(error), true);
+    });
+  }
+
+  ERPAuth.onReady(start);
+})();
+</script>
+
+</body>
+</html>
