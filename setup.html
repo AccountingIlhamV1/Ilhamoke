@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Persiapan Awal - Ilham ERP</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/auth.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div>
+          <h1 id="topbarTitle">Persiapan Awal</h1>
+          <p id="topbarSubtitle">Saldo awal usaha: harta, utang, dan modal</p>
+        </div>
+      </div>
+      <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
+    </header>
+
+    <main class="content">
+
+      <div id="noBusinessWarning" class="warning-box" style="display:none">
+        Belum ada usaha aktif di server, atau COA-nya belum diimpor.<br><br>
+        Pastikan usaha dan COA sudah ada di akun, lalu muat ulang halaman ini.<br><br>
+        <a href="business.html">Buka Data Usaha</a> · <a href="accounts.html">Buka Chart of Accounts</a>
+      </div>
+
+      <div id="messageBox" class="info-box" style="display:none"></div>
+
+      <!-- Sudah terisi -->
+      <div class="card" id="doneCard" style="display:none">
+        <h2>✅ Persiapan Awal Sudah Diisi</h2>
+        <p class="card-sub">Saldo awal usaha ini sudah dicatat. Kalau ada yang salah, batalkan lalu isi ulang.</p>
+        <div class="table-wrapper">
+          <table class="table-wide">
+            <thead><tr><th>Nomor</th><th>Keterangan</th><th>Debit</th><th>Kredit</th><th>Jumlah</th></tr></thead>
+            <tbody id="doneTable"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px">
+          <button type="button" class="btn-delete" id="redoButton">↶ Batalkan dan isi ulang</button>
+        </div>
+      </div>
+
+      <!-- Formulir -->
+      <div id="formArea">
+
+        <div class="card">
+          <h2>📅 Tanggal Saldo Awal</h2>
+          <p class="card-sub">Biasanya hari pertama tahun buku.</p>
+          <input type="date" id="dateInput">
+        </div>
+
+        <div class="card">
+          <h2>🏪 Harta (Aset)</h2>
+          <p class="card-sub">Kas, bank, peralatan, perlengkapan, stok barang, dan lain-lain. Satu akun boleh dipakai di beberapa baris, misalnya dua peralatan berbeda.</p>
+          <div id="assetBody"></div>
+          <button type="button" class="btn-cancel btn-sm" id="addAssetButton">+ Tambah baris harta</button>
+        </div>
+
+        <div class="card">
+          <h2>🧾 Utang Awal</h2>
+          <p class="card-sub">Kosongkan kalau tidak ada.</p>
+          <div id="debtBody"></div>
+          <button type="button" class="btn-cancel btn-sm" id="addDebtButton">+ Tambah baris utang</button>
+        </div>
+
+        <div class="card">
+          <h2>💰 Modal</h2>
+          <p class="card-sub">Modal pemilik pada saat mulai.</p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <select id="equitySelect" style="flex:2 1 220px"></select>
+            <input type="text" inputmode="numeric" id="equityAmount" placeholder="Nilai modal" style="flex:1 1 140px">
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>⚖️ Pemeriksaan</h2>
+          <div style="line-height:1.9">
+            <div>Total harta: <strong id="sumAsset">Rp 0</strong></div>
+            <div>Total utang: <strong id="sumDebt">Rp 0</strong></div>
+            <div>Modal: <strong id="sumEquity">Rp 0</strong></div>
+            <div>Selisih (Harta − Utang − Modal): <strong id="sumDiff">Rp 0</strong></div>
+          </div>
+          <p style="margin:10px 0"><span class="status-pill not-balance" id="statusPill">Belum seimbang</span></p>
+          <button type="button" class="btn-save" id="saveButton" disabled>Simpan Persiapan Awal</button>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+  ERP.initLayout({
+    active: "setup",
+    title: "Persiapan Awal",
+    subtitle: "Saldo awal usaha: harta, utang, dan modal"
+  });
+
+  const REF_PREFIX = "SALDO-AWAL-";
+  const $ = id => document.getElementById(id);
+
+  let assetRows = [];
+  let debtRows = [];
+  let equity = { accId: "", amount: "" };
+  let existing = [];
+
+  function activeServerBusiness() {
+    const business = ERP.getActiveBusiness();
+    return business && ERP.isUuid(business.id) ? business : null;
+  }
+
+  /* ---------- alat bantu ---------- */
+
+  function toAmount(text) {
+    const digits = String(text == null ? "" : text).replace(/[^\d]/g, "");
+    return digits ? Number(digits) : 0;
+  }
+
+  function money(n) {
+    return "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
+  }
+
+  function showMessage(text, isError) {
+    const box = $("messageBox");
+    if (!text) { box.style.display = "none"; return; }
+    box.textContent = text;
+    box.style.display = "block";
+    box.style.borderColor = isError ? "#fecaca" : "";
+    box.style.color = isError ? "#991b1b" : "";
+  }
+
+  function errText(error) {
+    return String((error && error.message) || error || "Terjadi kesalahan. Coba lagi.");
+  }
+
+  function nm(a) { return String(a.name || "").toLowerCase().replace(/^[-*\s]+/, ""); }
+  function grp(a) { return String(a.group || "").toLowerCase(); }
+  function isDebitNormal(a) { return !a.normalBalance || String(a.normalBalance).toLowerCase() === "debit"; }
+
+  function assetAccounts() {
+    return ERP.getActiveAccounts().filter(a => grp(a).indexOf("aset") === 0 && isDebitNormal(a));
+  }
+  function debtAccounts() {
+    return ERP.getActiveAccounts().filter(a => grp(a).indexOf("liabilitas") === 0 && !isDebitNormal(a));
+  }
+  function equityAccounts() {
+    return ERP.getActiveAccounts().filter(a => grp(a) === "ekuitas" && !isDebitNormal(a));
+  }
+  function accountById(id) {
+    return ERP.getActiveAccounts().find(a => ERP.idEqual(a.id, id)) || null;
+  }
+
+  function options(list, selected) {
+    const esc = ERP.escapeHTML;
+    return `<option value="">— pilih akun —</option>` + list.map(a =>
+      `<option value="${esc(a.id)}"${ERP.idEqual(a.id, selected) ? " selected" : ""}>${esc(a.code + " " + a.name.replace(/^[-*\s]+/, ""))}</option>`
+    ).join("");
+  }
+
+  /* ---------- pembagian jurnal pembuka ----------
+     Satu transaksi = satu Debit + satu Kredit. Harta dipasangkan berurutan
+     dengan sumbernya (utang dulu, lalu modal), dipecah kalau nilainya berbeda. */
+
+  function allocate(assets, credits) {
+    const a = assets.map(x => Object.assign({}, x));
+    const c = credits.map(x => Object.assign({}, x));
+    const out = [];
+    let i = 0, j = 0;
+    while (i < a.length && j < c.length) {
+      const amount = Math.min(a[i].amount, c[j].amount);
+      out.push({ debit: a[i], credit: c[j], amount });
+      a[i].amount -= amount;
+      c[j].amount -= amount;
+      if (a[i].amount === 0) i++;
+      if (c[j].amount === 0) j++;
+    }
+    return out;
+  }
+
+  function collect() {
+    const assets = assetRows.filter(r => toAmount(r.amount) > 0).map(r => ({ accId: r.accId, note: r.note, amount: toAmount(r.amount) }));
+    const debts = debtRows.filter(r => toAmount(r.amount) > 0).map(r => ({ accId: r.accId, note: r.note, amount: toAmount(r.amount) }));
+    const eq = toAmount(equity.amount);
+    return { assets, debts, eq };
+  }
+
+  function totals() {
+    const c = collect();
+    const sumAsset = c.assets.reduce((s, r) => s + r.amount, 0);
+    const sumDebt = c.debts.reduce((s, r) => s + r.amount, 0);
+    return { sumAsset, sumDebt, sumEquity: c.eq, diff: sumAsset - sumDebt - c.eq, c };
+  }
+
+  function problems() {
+    const t = totals();
+    const list = [];
+    if (t.sumAsset <= 0) list.push("Isi minimal satu harta.");
+    if (t.c.assets.some(r => !r.accId)) list.push("Ada harta yang akunnya belum dipilih.");
+    if (t.c.debts.some(r => !r.accId)) list.push("Ada utang yang akunnya belum dipilih.");
+    if (t.sumEquity <= 0) list.push("Isi nilai modal.");
+    if (!equity.accId) list.push("Pilih akun modal.");
+    if (t.diff !== 0) list.push("Belum seimbang.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test($("dateInput").value)) list.push("Isi tanggal.");
+    return list;
+  }
+
+  /* ---------- tampilan ---------- */
+
+  function rowHtml(kind, row, idx, list) {
+    return `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center">
+      <select data-kind="${kind}" data-idx="${idx}" data-field="accId" style="flex:2 1 200px">${options(list, row.accId)}</select>
+      <input type="text" data-kind="${kind}" data-idx="${idx}" data-field="note" value="${ERP.escapeHTML(row.note)}" placeholder="Keterangan (opsional), mis. mesin kopi" style="flex:2 1 180px">
+      <input type="text" inputmode="numeric" data-kind="${kind}" data-idx="${idx}" data-field="amount" value="${ERP.escapeHTML(row.amount)}" placeholder="Nilai (Rp)" style="flex:1 1 120px">
+      <button type="button" class="btn-delete btn-sm" data-remove="${kind}" data-idx="${idx}">Hapus</button>
+    </div>`;
+  }
+
+  function renderRows() {
+    $("assetBody").innerHTML = assetRows.map((r, i) => rowHtml("asset", r, i, assetAccounts())).join("");
+    $("debtBody").innerHTML = debtRows.map((r, i) => rowHtml("debt", r, i, debtAccounts())).join("");
+    $("equitySelect").innerHTML = options(equityAccounts(), equity.accId);
+    $("equityAmount").value = equity.amount;
+  }
+
+  function updateSummary() {
+    const t = totals();
+    $("sumAsset").textContent = money(t.sumAsset);
+    $("sumDebt").textContent = money(t.sumDebt);
+    $("sumEquity").textContent = money(t.sumEquity);
+    $("sumDiff").textContent = money(t.diff);
+    const ok = problems().length === 0;
+    const pill = $("statusPill");
+    if (t.diff === 0 && t.sumAsset > 0) { pill.textContent = "Seimbang"; pill.className = "status-pill balance"; }
+    else { pill.textContent = t.sumAsset > 0 ? "Belum seimbang, selisih " + money(t.diff) : "Belum diisi"; pill.className = "status-pill not-balance"; }
+    $("saveButton").disabled = !ok;
+  }
+
+  function defaultRows() {
+    const accounts = assetAccounts();
+    const patterns = [/^kas$/, /^bank$/, /^persediaan barang dagang/, /^persediaan bahan baku/, /^perlengkapan$/, /^peralatan$/];
+    const rows = [];
+    patterns.forEach(p => {
+      const acc = accounts.find(a => p.test(nm(a)));
+      if (acc && !rows.some(r => ERP.idEqual(r.accId, acc.id))) rows.push({ accId: acc.id, note: "", amount: "" });
+    });
+    return rows.length ? rows : [{ accId: "", note: "", amount: "" }];
+  }
+
+  function defaultDate() {
+    const business = ERP.getActiveBusiness();
+    const year = business && /(\d{4})/.exec(String(business.period || ""));
+    if (year) return year[1] + "-01-01";
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  /* ---------- sudah terisi? ---------- */
+
+  function findExisting() {
+    return ERP.getActiveTransactions().filter(t => String(t.invoice || "").indexOf(REF_PREFIX) === 0);
+  }
+
+  function renderDone() {
+    const esc = ERP.escapeHTML;
+    const label = id => { const a = accountById(id); return a ? esc(a.code + " " + a.name.replace(/^[-*\s]+/, "")) : "<em>akun dihapus</em>"; };
+    $("doneTable").innerHTML = existing.map(t => `
+      <tr>
+        <td>${esc(t.invoice)}</td>
+        <td>${esc(t.description)}</td>
+        <td>${label(t.debitAccountId)}</td>
+        <td>${label(t.creditAccountId)}</td>
+        <td>${esc(money(t.amount))}</td>
+      </tr>`).join("");
+  }
+
+  function refresh() {
+    existing = findExisting();
+    const filled = existing.length > 0;
+    $("doneCard").style.display = filled ? "block" : "none";
+    $("formArea").style.display = filled ? "none" : "block";
+    if (filled) renderDone();
+  }
+
+  /* ---------- aksi ---------- */
+
+  async function save() {
+    const business = activeServerBusiness();
+    if (!business) return;
+    const list = problems();
+    if (list.length) { showMessage(list[0], true); return; }
+
+    const t = totals();
+    const credits = t.c.debts.map(d => Object.assign({ kind: "debt" }, d)).concat([{ kind: "equity", accId: equity.accId, note: "", amount: t.c.eq }]);
+    const parts = allocate(t.c.assets, credits);
+    const date = $("dateInput").value;
+
+    const label = (id, note) => { const a = accountById(id); return (a ? a.name.replace(/^[-*\s]+/, "") : "akun") + (note ? " (" + note + ")" : ""); };
+    const transactions = parts.map((p, i) => ({
+      date,
+      invoice: REF_PREFIX + String(i + 1).padStart(3, "0"),
+      description: "Saldo awal: " + label(p.debit.accId, p.debit.note) + " dari " + label(p.credit.accId, p.credit.note),
+      debitAccountId: p.debit.accId,
+      creditAccountId: p.credit.accId,
+      amount: p.amount
+    }));
+
+    if (!confirm("Simpan persiapan awal? Akan dibuat " + transactions.length + " jurnal pembuka dengan total harta " + money(t.sumAsset) + ".")) return;
+
+    $("saveButton").disabled = true;
+    try {
+      await ERP.createTransactionsRemote(business.id, transactions);
+      showMessage("Persiapan awal tersimpan (" + transactions.length + " jurnal pembuka).");
+      refresh();
+    } catch (error) {
+      showMessage("Gagal menyimpan: " + errText(error), true);
+    } finally {
+      updateSummary();
+    }
+  }
+
+  async function redo() {
+    if (!existing.length) return;
+    if (!confirm("Batalkan semua jurnal saldo awal lalu isi ulang? Jurnal lama di-void (jejaknya tetap tersimpan) dan hilang dari laporan.")) return;
+    const client = ERPAuth.client;
+    const stamp = Date.now();
+    for (const t of existing) {
+      // Nomor diubah supaya nomor SALDO-AWAL-001 dst. bisa dipakai lagi.
+      const result = await client.from("transactions").update({ status: "void", reference_no: t.invoice + "~void" + stamp }).eq("id", t.id);
+      if (result.error) { showMessage("Gagal membatalkan: " + errText(result.error), true); try { await ERP.syncTransactions(); } catch (e) {} refresh(); return; }
+    }
+    try { await ERP.syncTransactions(); } catch (e) { /* cache diperbarui saat halaman dibuka lagi */ }
+    showMessage("Saldo awal dibatalkan. Silakan isi ulang.");
+    refresh();
+    updateSummary();
+  }
+
+  /* ---------- peristiwa ---------- */
+
+  function rowsOf(kind) { return kind === "asset" ? assetRows : debtRows; }
+
+  function onFieldChange(event) {
+    const el = event.target;
+    const kind = el && el.dataset && el.dataset.kind;
+    if (!kind) return;
+    const row = rowsOf(kind)[Number(el.dataset.idx)];
+    if (!row) return;
+    row[el.dataset.field] = el.value;
+    updateSummary();
+  }
+
+  ["assetBody", "debtBody"].forEach(id => {
+    $(id).addEventListener("input", onFieldChange);
+    $(id).addEventListener("change", onFieldChange);
+    $(id).addEventListener("click", function (event) {
+      const button = event.target.closest && event.target.closest("button[data-remove]");
+      if (!button) return;
+      const rows = rowsOf(button.getAttribute("data-remove"));
+      rows.splice(Number(button.getAttribute("data-idx")), 1);
+      renderRows();
+      updateSummary();
+    });
+  });
+
+  $("addAssetButton").addEventListener("click", () => { assetRows.push({ accId: "", note: "", amount: "" }); renderRows(); updateSummary(); });
+  $("addDebtButton").addEventListener("click", () => { debtRows.push({ accId: "", note: "", amount: "" }); renderRows(); updateSummary(); });
+  $("equitySelect").addEventListener("change", () => { equity.accId = $("equitySelect").value; updateSummary(); });
+  $("equityAmount").addEventListener("input", () => { equity.amount = $("equityAmount").value; updateSummary(); });
+  $("dateInput").addEventListener("change", updateSummary);
+  $("saveButton").addEventListener("click", save);
+  $("redoButton").addEventListener("click", redo);
+
+  function start() {
+    if (!activeServerBusiness() || ERP.getActiveAccounts().length === 0) {
+      $("noBusinessWarning").style.display = "block";
+      $("formArea").style.display = "none";
+      return;
+    }
+    assetRows = defaultRows();
+    debtRows = [];
+    const modal = equityAccounts().find(a => /^modal$/.test(nm(a))) || equityAccounts().find(a => /^modal/.test(nm(a))) || equityAccounts()[0];
+    equity = { accId: modal ? modal.id : "", amount: "" };
+    $("dateInput").value = defaultDate();
+    renderRows();
+    updateSummary();
+    refresh();
+  }
+
+  ERPAuth.onReady(start);
+
+</script>
+
+</body>
+</html>
