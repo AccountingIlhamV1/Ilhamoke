@@ -1403,7 +1403,7 @@ const ERP = (function () {
     card.className = "card";
     card.style.display = "none";
     card.innerHTML =
-      '<h2>📥 Data Lama di Perangkat Ini</h2>' +
+      '<h2>Data Lama di Perangkat Ini</h2>' +
       '<p class="card-sub" data-role="text"></p>' +
       '<button type="button" class="btn-save" data-role="button">Impor Data Lama ke Akun</button>';
     host.insertBefore(card, host.firstChild);
@@ -1882,23 +1882,23 @@ const ERP = (function () {
   /* ---------- LAYOUT (SIDEBAR + TOPBAR) ---------- */
 
   const NAV_ITEMS = [
-    { id: "dashboard",         label: "Dashboard",             icon: "📊", href: "index.html",             group: "Utama" },
-    { id: "business",          label: "Data Usaha",            icon: "🏢", href: "business.html",          group: "Master Data" },
-    { id: "accounts",          label: "Chart of Accounts",     icon: "📋", href: "accounts.html",          group: "Master Data" },
-    { id: "transactions",      label: "Transaksi",             icon: "🧾", href: "transactions.html",      group: "Master Data" },
-    { id: "products",          label: "Bahan & Produk",        icon: "🧪", href: "products.html",          group: "Master Data" },
-    { id: "setup",             label: "Persiapan Awal",        icon: "🚀", href: "setup.html",             group: "Master Data" },
-    { id: "telegram",          label: "Kotak Masuk Telegram",  icon: "✈️", href: "telegram.html",          group: "Master Data" },
-    { id: "journal",           label: "Jurnal Umum",           icon: "📖", href: "journal.html",           group: "Siklus Akuntansi" },
-    { id: "ledger",            label: "Buku Besar",            icon: "📚", href: "ledger.html",            group: "Siklus Akuntansi" },
-    { id: "trial-balance",     label: "Neraca Saldo",          icon: "🧮", href: "trial-balance.html",     group: "Siklus Akuntansi" },
-    { id: "adjusting-journal", label: "Jurnal Penyesuaian",    icon: "🛠️", href: "adjusting-journal.html", group: "Siklus Akuntansi" },
-    { id: "financial-statements", label: "Laporan Keuangan",  icon: "📈", href: "financial-statements.html", group: "Siklus Akuntansi" },
-    { id: "closing-journal",   label: "Jurnal Penutup",        icon: "🔒", href: "closing-journal.html",   group: "Penutupan Periode" },
-    { id: "post-closing-trial-balance", label: "Neraca Saldo Penutup", icon: "✅", href: "post-closing-trial-balance.html", group: "Penutupan Periode" },
-    { id: "equity-changes",    label: "Perubahan Ekuitas",     icon: "💹", href: "equity-changes.html",    group: "Penutupan Periode" },
-    { id: "cash-flow",         label: "Arus Kas",              icon: "💵", href: "cash-flow.html",         group: "Penutupan Periode" },
-    { id: "psak115",           label: "PSAK 115",              icon: "📑", href: "psak115.html",           group: "Modul Khusus" }
+    { id: "dashboard",         label: "Dashboard",             icon: "dashboard", href: "index.html",             group: "Utama" },
+    { id: "business",          label: "Data Usaha",            icon: "building", href: "business.html",          group: "Master Data" },
+    { id: "accounts",          label: "Chart of Accounts",     icon: "list", href: "accounts.html",          group: "Master Data" },
+    { id: "transactions",      label: "Transaksi",             icon: "receipt", href: "transactions.html",      group: "Master Data" },
+    { id: "products",          label: "Bahan & Produk",        icon: "flask", href: "products.html",          group: "Master Data" },
+    { id: "setup",             label: "Persiapan Awal",        icon: "flag", href: "setup.html",             group: "Master Data" },
+    { id: "telegram",          label: "Kotak Masuk Telegram",  icon: "send", href: "telegram.html",          group: "Master Data" },
+    { id: "journal",           label: "Jurnal Umum",           icon: "book-open", href: "journal.html",           group: "Siklus Akuntansi" },
+    { id: "ledger",            label: "Buku Besar",            icon: "book", href: "ledger.html",            group: "Siklus Akuntansi" },
+    { id: "trial-balance",     label: "Neraca Saldo",          icon: "calculator", href: "trial-balance.html",     group: "Siklus Akuntansi" },
+    { id: "adjusting-journal", label: "Jurnal Penyesuaian",    icon: "sliders", href: "adjusting-journal.html", group: "Siklus Akuntansi" },
+    { id: "financial-statements", label: "Laporan Keuangan",  icon: "trending-up", href: "financial-statements.html", group: "Siklus Akuntansi" },
+    { id: "closing-journal",   label: "Jurnal Penutup",        icon: "lock", href: "closing-journal.html",   group: "Penutupan Periode" },
+    { id: "post-closing-trial-balance", label: "Neraca Saldo Penutup", icon: "check-circle", href: "post-closing-trial-balance.html", group: "Penutupan Periode" },
+    { id: "equity-changes",    label: "Perubahan Ekuitas",     icon: "pie", href: "equity-changes.html",    group: "Penutupan Periode" },
+    { id: "cash-flow",         label: "Arus Kas",              icon: "wallet", href: "cash-flow.html",         group: "Penutupan Periode" },
+    { id: "psak115",           label: "PSAK 115",              icon: "file-text", href: "psak115.html",           group: "Modul Khusus" }
   ];
 
   function buildSidebar(activeId) {
@@ -1917,7 +1917,7 @@ const ERP = (function () {
         <div class="nav-group-title">${group.name}</div>
         ${group.items.map(item => `
           <a href="${item.href}" class="nav-link${item.id === activeId ? " active" : ""}">
-            <span class="nav-icon">${item.icon}</span>
+            <span class="nav-icon"><i class="ico-${item.icon}"></i></span>
             <span>${item.label}</span>
           </a>
         `).join("")}
@@ -1926,11 +1926,12 @@ const ERP = (function () {
 
     return `
       <div class="sidebar-brand">
-        <span class="brand-icon">🧮</span>
+        <span class="brand-icon"><i class="ico-calculator"></i></span>
         <div>
           <div class="brand-title">Ilham ERP</div>
-          <div class="brand-subtitle">Accounting Learning System</div>
+          <div class="brand-subtitle">Sistem Akuntansi UMKM</div>
         </div>
+        <button type="button" class="sidebar-close" id="sidebarClose" aria-label="Tutup menu"><i class="ico-close"></i></button>
       </div>
       <nav class="sidebar-nav">${groupsHtml}</nav>
     `;
@@ -1973,7 +1974,7 @@ const ERP = (function () {
       userBox.className = "sidebar-user";
       userBox.innerHTML = `
         <div class="sidebar-user-email" id="sidebarUserEmail">Memuat akun...</div>
-        <button type="button" class="sidebar-logout" id="logoutBtn">Keluar</button>
+        <button type="button" class="sidebar-logout" id="logoutBtn"><i class="ico-logout"></i>Keluar</button>
       `;
       sidebar.appendChild(userBox);
 
@@ -1989,24 +1990,38 @@ const ERP = (function () {
     updateActiveBadge();
 
     const overlay = document.getElementById("sidebarOverlay");
+    const closeBtn = document.getElementById("sidebarClose");
+
+    // Tombol menu tampil dengan ikon garis (bukan karakter teks).
+    if (menuToggle) {
+      menuToggle.innerHTML = '<i class="ico-menu"></i>';
+      menuToggle.setAttribute("aria-controls", "sidebar");
+      menuToggle.setAttribute("aria-expanded", "false");
+    }
+
+    function setSidebar(open) {
+      if (!appShell) return;
+      appShell.classList.toggle("sidebar-open", open);
+      if (menuToggle) menuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
 
     if (menuToggle && appShell) {
       menuToggle.addEventListener("click", () => {
-        appShell.classList.toggle("sidebar-open");
+        setSidebar(!appShell.classList.contains("sidebar-open"));
       });
     }
 
-    if (overlay && appShell) {
-      overlay.addEventListener("click", () => {
-        appShell.classList.remove("sidebar-open");
-      });
-    }
+    if (overlay) overlay.addEventListener("click", () => setSidebar(false));
+    if (closeBtn) closeBtn.addEventListener("click", () => setSidebar(false));
 
-    // Tutup sidebar mobile saat memilih menu.
+    // Tombol Esc menutup menu.
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") setSidebar(false);
+    });
+
+    // Menu tertutup lagi setelah memilih salah satu halaman.
     document.querySelectorAll(".nav-link").forEach(link => {
-      link.addEventListener("click", () => {
-        if (appShell) appShell.classList.remove("sidebar-open");
-      });
+      link.addEventListener("click", () => setSidebar(false));
     });
   }
 
