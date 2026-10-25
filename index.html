@@ -22,7 +22,7 @@
         <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
         <div>
           <h1 id="topbarTitle">Dashboard</h1>
-          <p id="topbarSubtitle">Accounting Learning System</p>
+          <p id="topbarSubtitle">Ringkasan usaha</p>
         </div>
       </div>
       <div class="active-badge" id="activeBusinessBadge">Memuat usaha...</div>
@@ -30,53 +30,100 @@
 
     <main class="content">
 
-      <h2 class="section-title">Ringkasan Usaha</h2>
+      <div class="dash-hello">
+        <h2 id="dashHelloTitle">Selamat datang</h2>
+        <p id="dashHelloSub">Memuat ringkasan usaha...</p>
+      </div>
 
-      <div class="grid-cards" id="summaryCards">
+      <div class="dash-grid">
 
-        <div class="tile">
-          <div class="tile-icon">💰</div>
-          <h3>Pendapatan Hari Ini</h3>
-          <p class="summary-value" id="sumRevenue">-</p>
-          <p id="sumRevenueNote">Memuat...</p>
+        <div class="dash-col">
+
+          <div class="kpi-row">
+            <div class="kpi">
+              <div class="kpi-top"><div class="kpi-ico">💰</div>Pendapatan</div>
+              <div class="kpi-value" id="kpiRevenue">-</div>
+              <span class="kpi-delta delta-flat" id="kpiRevenueDelta">-</span>
+              <div class="kpi-note" id="kpiRevenueNote"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top"><div class="kpi-ico">📈</div>Laba Kotor</div>
+              <div class="kpi-value" id="kpiGross">-</div>
+              <span class="kpi-delta delta-flat" id="kpiGrossDelta">-</span>
+              <div class="kpi-note" id="kpiGrossNote"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top"><div class="kpi-ico">📊</div>Laba Bersih</div>
+              <div class="kpi-value" id="kpiNet">-</div>
+              <span class="kpi-delta delta-flat" id="kpiNetDelta">-</span>
+              <div class="kpi-note" id="kpiNetNote"></div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top"><div class="kpi-ico">🏦</div>Kas &amp; Bank</div>
+              <div class="kpi-value" id="kpiCash">-</div>
+              <span class="kpi-delta delta-flat">Saldo saat ini</span>
+              <div class="kpi-note">Dari seluruh transaksi</div>
+            </div>
+          </div>
+
+          <div class="dash-card">
+            <div class="dash-card-head">
+              <h3>Pendapatan &amp; Biaya, 7 Hari Terakhir</h3>
+              <div class="chart-legend">
+                <span><i style="background:#0f766e"></i>Pendapatan</span>
+                <span><i style="background:#b9c9c7"></i>Biaya (HPP + Beban)</span>
+              </div>
+            </div>
+            <div class="chart-box" id="chartBox"><div class="chart-empty">Memuat grafik...</div></div>
+            <div class="stat-row">
+              <div class="stat"><span>Pendapatan 7 hari</span><strong id="stRevenue">-</strong></div>
+              <div class="stat"><span>HPP</span><strong id="stHpp">-</strong></div>
+              <div class="stat"><span>Beban Operasional</span><strong id="stOpex">-</strong></div>
+              <div class="stat"><span>Laba Bersih</span><strong id="stNet">-</strong></div>
+            </div>
+          </div>
+
+          <div class="dash-card">
+            <div class="dash-card-head">
+              <h3>Transaksi Terbaru</h3>
+              <a class="muted" href="transactions.html">Lihat semua</a>
+            </div>
+            <div class="trx-list" id="recentList"><div class="dash-empty">Memuat...</div></div>
+          </div>
+
         </div>
 
-        <div class="tile">
-          <div class="tile-icon">🧪</div>
-          <h3>HPP Hari Ini</h3>
-          <p class="summary-value" id="sumHpp">-</p>
-          <p id="sumHppNote">Memuat...</p>
-        </div>
+        <div class="dash-col">
 
-        <div class="tile">
-          <div class="tile-icon">📈</div>
-          <h3>Laba Kotor Hari Ini</h3>
-          <p class="summary-value" id="sumGross">-</p>
-          <p id="sumGrossNote">Pendapatan dikurangi HPP.</p>
-        </div>
+          <div class="hero-card">
+            <h3>Catat lewat Telegram</h3>
+            <p>Kasir cukup memilih produk di bot. Penjualan dan modal produk tercatat otomatis, lalu muncul di sini.</p>
+            <a class="btn" href="telegram.html">Buka Kotak Masuk Telegram</a>
+          </div>
 
-        <div class="tile">
-          <div class="tile-icon">💸</div>
-          <h3>Beban Operasional Hari Ini</h3>
-          <p class="summary-value" id="sumExpense">-</p>
-          <p id="sumExpenseNote">Memuat...</p>
-        </div>
+          <div class="dash-card">
+            <div class="dash-card-head"><h3>Aksi Cepat</h3></div>
+            <div class="quick-grid">
+              <a class="quick-btn" href="journal.html"><span>📝</span>Catat Jurnal</a>
+              <a class="quick-btn" href="products.html"><span>🧪</span>Bahan &amp; Produk</a>
+              <a class="quick-btn" href="financial-statements.html"><span>📈</span>Laporan Keuangan</a>
+              <a class="quick-btn" href="ledger.html"><span>📚</span>Buku Besar</a>
+            </div>
+          </div>
 
-        <div class="tile">
-          <div class="tile-icon">📊</div>
-          <h3>Laba Bersih Hari Ini</h3>
-          <p class="summary-value" id="sumProfit">-</p>
-          <p id="sumProfitNote">Laba kotor dikurangi beban operasional.</p>
-        </div>
+          <div class="dash-card">
+            <div class="dash-card-head">
+              <h3>Biaya Terbesar</h3>
+              <span class="muted">7 hari terakhir</span>
+            </div>
+            <div id="costBars"><div class="dash-empty">Memuat...</div></div>
+          </div>
 
-        <div class="tile">
-          <div class="tile-icon">🏦</div>
-          <h3>Saldo Kas &amp; Bank</h3>
-          <p class="summary-value" id="sumCash">-</p>
-          <p id="sumCashNote">Dari seluruh transaksi.</p>
         </div>
 
       </div>
+
+      <div class="dash-modules">
 
       <h2 class="section-title">Master Data</h2>
 
@@ -200,6 +247,8 @@
 
       </div>
 
+      </div>
+
     </main>
 
   </div>
@@ -211,101 +260,222 @@
   ERP.initLayout({
     active: "dashboard",
     title: "Dashboard",
-    subtitle: "Ilham ERP — Accounting Learning System"
+    subtitle: "Ringkasan usaha dan akses cepat ke semua modul"
   });
 </script>
 
 <script>
-  /* Kartu ringkasan: angka dibaca dari data ERP yang sudah disinkronkan
-     dari Supabase (termasuk transaksi dari bot Telegram). Hanya transaksi
-     berstatus posted yang dihitung, sama seperti perintah /omzet di bot.
-     HPP dipisah dari Beban Operasional. */
-  (function () {
-    function setText(id, text) {
-      var el = document.getElementById(id);
-      if (el) el.textContent = text;
+/* Dashboard: semua angka dihitung dari data ERP yang sudah disinkronkan dari Supabase
+   (termasuk transaksi dari bot Telegram). Hanya transaksi berstatus posted yang dihitung.
+   HPP dipisah dari Beban Operasional. */
+(function () {
+  function el(id) { return document.getElementById(id); }
+  function setText(id, text) { var x = el(id); if (x) x.textContent = text; }
+  function setHtml(id, html) { var x = el(id); if (x) x.innerHTML = html; }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function money(n) { return ERP.formatMoney(n); }
+  function shortMoney(n) {
+    var a = Math.abs(n), sign = n < 0 ? "-" : "";
+    function f(x) { return (Math.round(x * 10) / 10).toString().replace(".", ","); }
+    if (a >= 1e9) return sign + f(a / 1e9) + " M";
+    if (a >= 1e6) return sign + f(a / 1e6) + " jt";
+    if (a >= 1e3) return sign + f(a / 1e3) + " rb";
+    return sign + Math.round(a);
+  }
+  function jakartaToday() {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+  }
+  function shift(dateStr, delta) {
+    var d = new Date(dateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + delta);
+    return d.toISOString().slice(0, 10);
+  }
+  var BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  function dayLabel(d) { var p = d.split("-"); return Number(p[2]) + " " + BULAN[Number(p[1]) - 1]; }
+
+  function setDelta(id, cur, prev) {
+    var x = el(id);
+    if (!x) return;
+    var cls = "delta-flat", text = "Sama seperti kemarin";
+    if (prev === 0 && cur === 0) {
+      text = "Belum ada";
+    } else if (prev === 0) {
+      cls = cur > 0 ? "delta-up" : "delta-down";
+      text = cur > 0 ? "▲ Baru hari ini" : "▼ Baru hari ini";
+    } else {
+      var pct = (cur - prev) / Math.abs(prev) * 100;
+      if (pct > 0.5) { cls = "delta-up"; text = "▲ " + Math.round(pct) + "% dari kemarin"; }
+      else if (pct < -0.5) { cls = "delta-down"; text = "▼ " + Math.round(Math.abs(pct)) + "% dari kemarin"; }
     }
+    x.className = "kpi-delta " + cls;
+    x.textContent = text;
+  }
 
-    function jakartaToday() {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+  // Batas atas grafik dibuat dari 4 langkah yang rapi (1, 2, 2,5, 5 x 10^n).
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    var raw = v / 4;
+    var p = Math.pow(10, Math.floor(Math.log10(raw)));
+    var n = raw / p;
+    var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+    return step * p * 4;
+  }
+
+  function drawChart(days, per) {
+    var box = el("chartBox");
+    var W = Math.max(300, (box && box.clientWidth) || 600), H = 230, L = 52, R = 10, T = 12, B = 30;
+    var pw = W - L - R, ph = H - T - B;
+    var maxV = 0;
+    days.forEach(function (d) { maxV = Math.max(maxV, per[d].rev, per[d].hpp + per[d].opex); });
+    if (maxV <= 0) {
+      setHtml("chartBox", '<div class="chart-empty">Belum ada transaksi dalam 7 hari terakhir.</div>');
+      return;
     }
+    var top = niceMax(maxV);
+    var svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Grafik pendapatan dan biaya 7 hari terakhir">';
+    for (var i = 0; i <= 4; i++) {
+      var val = top * i / 4;
+      var y = T + ph - (ph * i / 4);
+      svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="#e3eaea" stroke-width="1"/>';
+      svg += '<text x="' + (L - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#8a9a99">' + shortMoney(val) + '</text>';
+    }
+    var gw = pw / days.length, bw = Math.min(26, gw * 0.3);
+    days.forEach(function (d, idx) {
+      var cx = L + gw * idx + gw / 2;
+      var rev = per[d].rev, cost = per[d].hpp + per[d].opex;
+      var hr = Math.max(0, rev) / top * ph, hc = Math.max(0, cost) / top * ph;
+      var isToday = idx === days.length - 1;
+      svg += '<rect x="' + (cx - bw - 2) + '" y="' + (T + ph - hr) + '" width="' + bw + '" height="' + hr + '" rx="4" fill="#0f766e"><title>' + dayLabel(d) + " · Pendapatan " + esc(money(rev)) + "</title></rect>";
+      svg += '<rect x="' + (cx + 2) + '" y="' + (T + ph - hc) + '" width="' + bw + '" height="' + hc + '" rx="4" fill="#b9c9c7"><title>' + dayLabel(d) + " · Biaya " + esc(money(cost)) + "</title></rect>";
+      svg += '<text x="' + cx + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="' + (isToday ? "#134e4a" : "#8a9a99") + '"' + (isToday ? ' font-weight="700"' : "") + ">" + dayLabel(d) + "</text>";
+    });
+    svg += "</svg>";
+    setHtml("chartBox", svg);
+  }
 
-    function renderSummary() {
-      try {
-        var business = ERP.getActiveBusiness();
-        if (!business) {
-          setText("sumRevenue", "-");
-          setText("sumRevenueNote", "Belum ada usaha aktif.");
-          setText("sumExpense", "-");
-          setText("sumExpenseNote", "Pilih usaha di Data Usaha.");
-          setText("sumHpp", "-");
-          setText("sumHppNote", "");
-          setText("sumGross", "-");
-          setText("sumProfit", "-");
-          setText("sumCash", "-");
-          return;
-        }
-
-        var accounts = ERP.getActiveAccounts();
-        var byId = {};
-        accounts.forEach(function (a) { byId[String(a.id)] = a; });
-
-        function isGroup(id, groups) {
-          var a = byId[String(id)];
-          return !!a && groups.indexOf(a.group) !== -1;
-        }
-        // HPP = akun "Harga Pokok Penjualan" (dibaca dari namanya, bukan dari kelompoknya),
-        // supaya tidak tercampur ke Beban Operasional.
-        function isHpp(id) {
-          var a = byId[String(id)];
-          return !!a && /harga pokok penjualan/i.test(String(a.name || ""));
-        }
-        function isOpex(id) {
-          return isGroup(id, ["Beban"]) && !isHpp(id);
-        }
-        function isCash(id) {
-          var a = byId[String(id)];
-          return !!a && !!a.isCash;
-        }
-
-        var today = jakartaToday();
-        var revenue = 0, hpp = 0, expense = 0, count = 0, cash = 0;
-
-        ERP.getActiveTransactions().forEach(function (t) {
-          var amt = Number(t.amount) || 0;
-
-          if (isCash(t.debitAccountId)) cash += amt;
-          if (isCash(t.creditAccountId)) cash -= amt;
-
-          if (String(t.date) !== today) return;
-
-          if (isGroup(t.creditAccountId, ["Pendapatan"])) { revenue += amt; count++; }
-          if (isGroup(t.debitAccountId, ["Pendapatan"])) revenue -= amt;
-          if (isHpp(t.debitAccountId)) hpp += amt;
-          if (isHpp(t.creditAccountId)) hpp -= amt;
-          if (isOpex(t.debitAccountId)) expense += amt;
-          if (isOpex(t.creditAccountId)) expense -= amt;
-        });
-
-        setText("sumRevenue", ERP.formatMoney(revenue));
-        setText("sumRevenueNote", count + " transaksi");
-        setText("sumHpp", ERP.formatMoney(hpp));
-        setText("sumHppNote", (hpp === 0 && revenue > 0)
-          ? "HPP belum tercatat (produk belum punya resep atau modal)."
-          : "Harga pokok penjualan.");
-        setText("sumGross", ERP.formatMoney(revenue - hpp));
-        setText("sumExpense", ERP.formatMoney(expense));
-        setText("sumExpenseNote", "Di luar HPP.");
-        setText("sumProfit", ERP.formatMoney(revenue - hpp - expense));
-        setText("sumCash", ERP.formatMoney(cash));
-      } catch (error) {
-        console.error("Gagal menyusun ringkasan:", error);
-        setText("sumRevenueNote", "Ringkasan belum bisa dimuat.");
+  function render() {
+    try {
+      var business = ERP.getActiveBusiness();
+      var dateText = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
+      if (!business) {
+        setText("dashHelloTitle", "Selamat datang");
+        setText("dashHelloSub", "Belum ada usaha aktif. Pilih atau buat usaha di menu Data Usaha.");
+        return;
       }
-    }
+      setText("dashHelloTitle", "Selamat datang di " + (business.name || "usahamu"));
+      setText("dashHelloSub", dateText);
 
-    renderSummary();
-  })();
+      var accounts = ERP.getActiveAccounts();
+      var byId = {};
+      accounts.forEach(function (a) { byId[String(a.id)] = a; });
+      function isGroup(id, groups) { var a = byId[String(id)]; return !!a && groups.indexOf(a.group) !== -1; }
+      // HPP dibaca dari nama akunnya supaya tidak tercampur ke Beban Operasional.
+      function isHpp(id) { var a = byId[String(id)]; return !!a && /harga pokok penjualan/i.test(String(a.name || "")); }
+      function isOpex(id) { return isGroup(id, ["Beban"]) && !isHpp(id); }
+      function isCash(id) { var a = byId[String(id)]; return !!a && !!a.isCash; }
+      function accName(id) { var a = byId[String(id)]; return a ? String(a.name || "").replace(/^[-*\s]+/, "") : "Akun"; }
+
+      var today = jakartaToday();
+      var days = [];
+      for (var i = 6; i >= 0; i--) days.push(shift(today, -i));
+      var per = {};
+      days.forEach(function (d) { per[d] = { rev: 0, hpp: 0, opex: 0, count: 0 }; });
+
+      var cash = 0, costByAcc = {}, recent = [];
+      ERP.getActiveTransactions().forEach(function (t) {
+        if (t.status && t.status !== "posted") return;
+        var amt = Number(t.amount) || 0;
+        if (isCash(t.debitAccountId)) cash += amt;
+        if (isCash(t.creditAccountId)) cash -= amt;
+        recent.push(t);
+
+        var p = per[String(t.date)];
+        if (!p) return;
+        if (isGroup(t.creditAccountId, ["Pendapatan"])) { p.rev += amt; p.count++; }
+        if (isGroup(t.debitAccountId, ["Pendapatan"])) p.rev -= amt;
+        if (isHpp(t.debitAccountId)) p.hpp += amt;
+        if (isHpp(t.creditAccountId)) p.hpp -= amt;
+        if (isOpex(t.debitAccountId)) p.opex += amt;
+        if (isOpex(t.creditAccountId)) p.opex -= amt;
+        if (isHpp(t.debitAccountId) || isOpex(t.debitAccountId)) costByAcc[t.debitAccountId] = (costByAcc[t.debitAccountId] || 0) + amt;
+        if (isHpp(t.creditAccountId) || isOpex(t.creditAccountId)) costByAcc[t.creditAccountId] = (costByAcc[t.creditAccountId] || 0) - amt;
+      });
+
+      // ----- kartu angka: hari ini dibanding kemarin -----
+      var cur = per[today], prev = per[days[5]];
+      var curGross = cur.rev - cur.hpp, prevGross = prev.rev - prev.hpp;
+      var curNet = curGross - cur.opex, prevNet = prevGross - prev.opex;
+      setText("kpiRevenue", money(cur.rev));
+      setText("kpiRevenueNote", cur.count + " transaksi hari ini");
+      setText("kpiGross", money(curGross));
+      setText("kpiGrossNote", (cur.hpp === 0 && cur.rev > 0) ? "HPP belum tercatat" : "Pendapatan dikurangi HPP");
+      setText("kpiNet", money(curNet));
+      setText("kpiNetNote", "Setelah beban operasional");
+      setText("kpiCash", money(cash));
+      setDelta("kpiRevenueDelta", cur.rev, prev.rev);
+      setDelta("kpiGrossDelta", curGross, prevGross);
+      setDelta("kpiNetDelta", curNet, prevNet);
+
+      // ----- grafik dan ringkasan 7 hari -----
+      drawChart(days, per);
+      var tr = 0, th = 0, to = 0;
+      days.forEach(function (d) { tr += per[d].rev; th += per[d].hpp; to += per[d].opex; });
+      setText("stRevenue", money(tr));
+      setText("stHpp", money(th));
+      setText("stOpex", money(to));
+      setText("stNet", money(tr - th - to));
+
+      // ----- biaya terbesar -----
+      var rows = Object.keys(costByAcc).map(function (id) { return { name: accName(id), v: costByAcc[id] }; })
+        .filter(function (r) { return r.v > 0; })
+        .sort(function (a, b) { return b.v - a.v; }).slice(0, 5);
+      if (!rows.length) {
+        setHtml("costBars", '<div class="dash-empty">Belum ada biaya dalam 7 hari terakhir.</div>');
+      } else {
+        var mx = rows[0].v;
+        setHtml("costBars", rows.map(function (r) {
+          return '<div class="bar-item"><div class="bar-label"><span>' + esc(r.name) + "</span><span>" + esc(money(r.v)) +
+            '</span></div><div class="bar-track"><div class="bar-fill" style="width:' + Math.max(4, Math.round(r.v / mx * 100)) + '%"></div></div></div>';
+        }).join(""));
+      }
+
+      // ----- transaksi terbaru -----
+      recent.sort(function (a, b) {
+        var da = String(a.date), db = String(b.date);
+        if (da !== db) return da < db ? 1 : -1;
+        return String(b.createdAt || "") < String(a.createdAt || "") ? -1 : 1;
+      });
+      if (!recent.length) {
+        setHtml("recentList", '<div class="dash-empty">Belum ada transaksi. Catat lewat bot Telegram atau menu Jurnal.</div>');
+      } else {
+        setHtml("recentList", recent.slice(0, 6).map(function (t) {
+          var amt = Number(t.amount) || 0, cls = "amt-neutral", sign = "";
+          if (isGroup(t.creditAccountId, ["Pendapatan"])) { cls = "amt-in"; sign = "+"; }
+          else if (isHpp(t.debitAccountId) || isOpex(t.debitAccountId)) { cls = "amt-out"; sign = "-"; }
+          var via = t.source === "telegram" ? " · via Telegram" : "";
+          return '<div class="trx-row"><div class="trx-main"><div class="trx-desc">' + esc(t.description || "-") +
+            '</div><div class="trx-meta">' + esc(ERP.formatDate(t.date)) + via + '</div></div><div class="trx-amt ' + cls + '">' +
+            sign + esc(money(amt)) + "</div></div>";
+        }).join(""));
+      }
+    } catch (error) {
+      console.error("Gagal menyusun dashboard:", error);
+      setText("dashHelloSub", "Ringkasan belum bisa dimuat.");
+    }
+  }
+
+  render();
+  // Data bisa baru selesai disinkronkan setelah halaman tampil: hitung ulang beberapa kali.
+  document.addEventListener("erp:auth-ready", function () { render(); setTimeout(render, 1500); setTimeout(render, 4000); });
+  window.addEventListener("pageshow", render);
+  var resizeTimer = null;
+  window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 200); });
+})();
+
 </script>
 
 </body>
