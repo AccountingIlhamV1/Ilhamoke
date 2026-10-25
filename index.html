@@ -83,6 +83,14 @@
             </div>
           </div>
 
+          <div class="dash-card" id="taxCard">
+            <div class="dash-card-head">
+              <h3>Pajak UMKM (PPh Final)</h3>
+              <span class="muted" id="taxHint">Memuat...</span>
+            </div>
+            <div id="taxBody"><div class="dash-empty">Memuat...</div></div>
+          </div>
+
           <div class="dash-card">
             <div class="dash-card-head">
               <h3>Transaksi Terbaru</h3>
@@ -477,6 +485,212 @@
   window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 200); });
 })();
 
+</script>
+
+<script>
+/* Pajak UMKM di dashboard (PPh Final untuk usaha perorangan).
+   Hitungan: omzet kumulatif sejak Januari; omzet sampai batas bebas pajak tidak dikenai pajak;
+   bagian di atasnya dikenai tarif final. Angka aturan ada di bagian atas supaya mudah diganti
+   kalau peraturan berubah. Tombol "Sudah dibayar" mencatat jurnal: Debit Beban Pajak Final,
+   Kredit Kas/Bank, sehingga ikut ke buku besar, neraca saldo, dan laporan keuangan. */
+(function () {
+  var TAX_RATE = 0.005;          // 0,5% dari omzet bruto
+  var FREE_LIMIT = 500000000;    // omzet bebas pajak per tahun untuk orang pribadi
+  var CAP = 4800000000;          // batas omzet skema final
+  var PREFIX = "PPH-FINAL-";     // penanda nomor referensi jurnal pajak (juga mencegah catat ganda)
+  var BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  // Pendapatan di luar omzet usaha (bunga, sewa, laba penjualan aset, dll) tidak ikut dihitung.
+  var NOT_TURNOVER = /bunga|jasa giro|sewa|dividen|laba|keuntungan|selisih kurs|pemulihan|hibah|donasi|denda|lain-lain|lainnya/i;
+
+  var chosenPay = "", chosenDate = "", busy = false;
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function money(n) { return ERP.formatMoney(n); }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function today() { return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10); }
+  function modeKey(b) { return "ilhamERP_taxMode_" + b.id; }
+  function getMode(b) { try { return localStorage.getItem(modeKey(b)) || "orang"; } catch (e) { return "orang"; } }
+  function setMode(b, v) { try { localStorage.setItem(modeKey(b), v); } catch (e) {} }
+  function cleanName(a) { return String(a.name || "").replace(/^[-*\s]+/, ""); }
+
+  function modeSelect(mode) {
+    return '<label style="font-size:12.5px;color:var(--text-muted)">Bentuk usaha ' +
+      '<select id="taxMode" style="margin-left:6px;padding:4px 8px;border:1px solid var(--border);border-radius:8px">' +
+      '<option value="orang"' + (mode === "orang" ? " selected" : "") + '>Perorangan</option>' +
+      '<option value="badan"' + (mode === "badan" ? " selected" : "") + '>PT / CV</option>' +
+      '</select></label>';
+  }
+
+  function render() {
+    var body = el("taxBody");
+    if (!body) return;
+    try {
+      var business = ERP.getActiveBusiness();
+      if (!business) { body.innerHTML = '<div class="dash-empty">Pilih usaha dulu di menu Data Usaha.</div>'; return; }
+
+      // Simpan pilihan yang sedang dipakai sebelum digambar ulang.
+      if (el("taxPay")) chosenPay = el("taxPay").value;
+      if (el("taxDate")) chosenDate = el("taxDate").value;
+
+      var mode = getMode(business);
+      if (mode === "badan") {
+        el("taxHint").textContent = "";
+        body.innerHTML = '<p style="margin:0 0 12px;color:var(--text-muted);font-size:13.5px">Untuk PT atau CV, pajak dihitung dari laba, bukan dari omzet. Hitungan otomatisnya belum tersedia. Pajak tetap bisa dicatat lewat Catat Jurnal.</p>' + modeSelect(mode);
+        return;
+      }
+
+      var accounts = ERP.getActiveAccounts();
+      var byId = {};
+      accounts.forEach(function (a) { byId[String(a.id)] = a; });
+      function isTurnover(id) { var a = byId[String(id)]; return !!a && a.group === "Pendapatan" && !NOT_TURNOVER.test(String(a.name || "")); }
+
+      var now = today();
+      var year = Number(now.slice(0, 4));
+      var curMonth = Number(now.slice(5, 7)) - 1;
+      var perMonth = [0,0,0,0,0,0,0,0,0,0,0,0];
+      var paid = {};
+      ERP.getActiveTransactions().forEach(function (t) {
+        var inv = String(t.invoice || "");
+        if (inv.indexOf(PREFIX) === 0) paid[inv] = true;
+        var d = String(t.date || "");
+        if (d.slice(0, 4) !== String(year)) return;
+        var m = Number(d.slice(5, 7)) - 1;
+        var amt = Number(t.amount) || 0;
+        if (isTurnover(t.creditAccountId)) perMonth[m] += amt;
+        if (isTurnover(t.debitAccountId)) perMonth[m] -= amt;
+      });
+
+      var cum = 0, rows = [], unpaidTotal = 0, overCap = false;
+      for (var i = 0; i <= curMonth; i++) {
+        var prev = cum;
+        cum += perMonth[i];
+        var capped = Math.min(cum, CAP);
+        if (cum > CAP) overCap = true;
+        var taxable = Math.max(0, capped - FREE_LIMIT) - Math.max(0, Math.min(prev, CAP) - FREE_LIMIT);
+        var tax = Math.round(Math.max(0, taxable) * TAX_RATE);
+        var inv = PREFIX + year + "-" + pad(i + 1);
+        if (tax > 0 || paid[inv]) {
+          var dueY = i === 11 ? year + 1 : year, dueM = i === 11 ? 1 : i + 2;
+          var due = dueY + "-" + pad(dueM) + "-15";
+          rows.push({ m: i, tax: tax, paid: !!paid[inv], due: due, late: !paid[inv] && now > due });
+          if (!paid[inv]) unpaidTotal += tax;
+        }
+      }
+
+      var expAcc = accounts.filter(function (a) { return a.group === "Beban" && /pajak final/i.test(String(a.name || "")); })[0] ||
+                   accounts.filter(function (a) { return a.group === "Beban" && /^[-*\s]*beban pajak/i.test(String(a.name || "")); })[0] || null;
+      var cashAccs = accounts.filter(function (a) { return a.isCash; });
+      if (!chosenPay || !cashAccs.some(function (a) { return String(a.id) === chosenPay; })) chosenPay = cashAccs.length ? String(cashAccs[0].id) : "";
+      if (!chosenDate) chosenDate = now;
+
+      el("taxHint").textContent = "Tahun " + year + " · tarif " + String(TAX_RATE * 100).replace(".", ",") + "%";
+
+      var html = '<div class="stat-row" style="margin-bottom:14px">' +
+        '<div class="stat"><span>Omzet ' + year + '</span><strong>' + money(cum) + '</strong></div>' +
+        '<div class="stat"><span>Sisa bebas pajak</span><strong>' + money(Math.max(0, FREE_LIMIT - cum)) + '</strong></div>' +
+        '<div class="stat"><span>Pajak belum dibayar</span><strong>' + money(unpaidTotal) + '</strong></div>' +
+        '</div>';
+
+      if (overCap) html += '<p style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:var(--warning-bg);color:#92400e;font-size:13px">Omzet sudah melewati ' + money(CAP) + ', batas skema PPh final. Hitungan di bawah hanya sampai batas itu. Konsultasikan ke konsultan pajak.</p>';
+
+      if (!rows.length) {
+        html += '<div class="dash-empty">' + (cum <= FREE_LIMIT ? 'Belum ada pajak yang harus dibayar. Omzet tahun ini masih di bawah batas bebas pajak.' : 'Belum ada pajak yang harus dibayar.') + '</div>';
+      } else {
+        html += '<div class="trx-list">' + rows.map(function (r) {
+          var right = r.paid
+            ? '<span style="color:var(--success);font-weight:700;font-size:13px">✓ Sudah dibayar</span>'
+            : '<button class="btn btn-sm btn-primary" data-pay="' + r.m + '" data-tax="' + r.tax + '">Sudah dibayar</button>';
+          var meta = r.paid ? 'Tercatat di jurnal' : 'Bayar paling lambat ' + esc(ERP.formatDate(r.due)) + (r.late ? ' · <span style="color:var(--danger);font-weight:700">lewat batas</span>' : '');
+          return '<div class="trx-row"><div class="trx-main"><div class="trx-desc">Masa ' + BULAN[r.m] + ' ' + year + ' · ' + money(r.tax) + '</div>' +
+            '<div class="trx-meta">' + meta + '</div></div><div>' + right + '</div></div>';
+        }).join("") + '</div>';
+
+        if (unpaidTotal > 0) {
+          if (!expAcc) {
+            html += '<p style="margin:12px 0 0;color:var(--danger);font-size:13px">Akun “Beban Pajak Final” belum ada. Tambahkan dulu di Chart of Accounts (grup Beban), lalu muat ulang halaman ini.</p>';
+          } else if (!cashAccs.length) {
+            html += '<p style="margin:12px 0 0;color:var(--danger);font-size:13px">Belum ada akun Kas/Bank. Tambahkan dulu di Chart of Accounts.</p>';
+          } else {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;font-size:12.5px;color:var(--text-muted)">' +
+              '<label>Dibayar dari <select id="taxPay" style="margin-left:6px;padding:4px 8px;border:1px solid var(--border);border-radius:8px">' +
+              cashAccs.map(function (a) { return '<option value="' + esc(a.id) + '"' + (String(a.id) === chosenPay ? " selected" : "") + '>' + esc(cleanName(a)) + '</option>'; }).join("") +
+              '</select></label>' +
+              '<label>Tanggal bayar <input id="taxDate" type="date" value="' + esc(chosenDate) + '" max="' + now + '" style="margin-left:6px;padding:4px 8px;border:1px solid var(--border);border-radius:8px"></label>' +
+              '</div>';
+          }
+        }
+      }
+
+      html += '<p style="margin:14px 0 8px;color:var(--text-faint);font-size:12px;line-height:1.5">Omzet dihitung dari akun pendapatan usaha. Bunga, sewa, dan laba penjualan aset tidak dihitung. Beban pajak dicatat pada tanggal bayar. Hasil ini perkiraan, cocokkan dengan konsultan pajak atau Coretax sebelum menyetor.</p>';
+      html += modeSelect(mode);
+      body.innerHTML = html;
+
+      body._ctx = { business: business, expAcc: expAcc, year: year };
+    } catch (error) {
+      console.error("Gagal menyusun kartu pajak:", error);
+      body.innerHTML = '<div class="dash-empty">Kartu pajak belum bisa dimuat.</div>';
+    }
+  }
+
+  async function pay(btn) {
+    var body = el("taxBody");
+    var ctx = body._ctx;
+    if (!ctx || busy) return;
+    var m = Number(btn.getAttribute("data-pay"));
+    var tax = Number(btn.getAttribute("data-tax"));
+    var payId = el("taxPay") ? el("taxPay").value : "";
+    var date = el("taxDate") ? el("taxDate").value : "";
+    if (!ctx.expAcc || !payId) { alert("Akun beban pajak atau akun kas/bank belum siap."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) { alert("Tanggal bayar belum benar."); return; }
+    var payAcc = ERP.getActiveAccounts().filter(function (a) { return String(a.id) === String(payId); })[0];
+    var label = BULAN[m] + " " + ctx.year;
+    if (!confirm("Catat pembayaran PPh Final masa " + label + " sebesar " + money(tax) + "?\n\nJurnal: Debit " + cleanName(ctx.expAcc) + ", Kredit " + (payAcc ? cleanName(payAcc) : "Kas/Bank") + ".\nTanggal: " + date + ".")) return;
+
+    var item = {
+      date: date,
+      invoice: PREFIX + ctx.year + "-" + pad(m + 1),
+      description: "PPh Final UMKM 0,5% masa " + label,
+      debitAccountId: ctx.expAcc.id,
+      creditAccountId: payId,
+      amount: tax
+    };
+    busy = true;
+    btn.disabled = true;
+    try {
+      if (ERP.isUuid(ctx.business.id) && ERP.isUuid(ctx.expAcc.id) && ERP.isUuid(payId)) {
+        await ERP.createTransactionsRemote(ctx.business.id, [item]);
+      } else {
+        var list = ERP.getTransactions();
+        list.push({ id: String(Date.now()), businessId: ctx.business.id, date: item.date, invoice: item.invoice,
+          description: item.description, debitAccountId: item.debitAccountId, creditAccountId: item.creditAccountId,
+          amount: item.amount, createdAt: new Date().toISOString() });
+        ERP.saveTransactions(list);
+      }
+      alert("Pembayaran pajak masa " + label + " tercatat di jurnal.");
+    } catch (error) {
+      var msg = String((error && error.message) || error || "");
+      alert(/duplicate|23505|unique/i.test(msg) ? "Pajak masa " + label + " sudah pernah dicatat." : "Belum tersimpan: " + msg);
+    }
+    busy = false;
+    render();
+  }
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest ? ev.target.closest("[data-pay]") : null;
+    if (btn && el("taxBody") && el("taxBody").contains(btn)) pay(btn);
+  });
+  document.addEventListener("change", function (ev) {
+    if (ev.target && ev.target.id === "taxMode") {
+      var b = ERP.getActiveBusiness();
+      if (b) { setMode(b, ev.target.value); render(); }
+    }
+  });
+
+  render();
+  document.addEventListener("erp:auth-ready", function () { render(); setTimeout(render, 1500); setTimeout(render, 4000); });
+  window.addEventListener("pageshow", render);
+})();
 </script>
 
 </body>
