@@ -123,6 +123,15 @@
     try { el.setSelectionRange(i, i); } catch (e) { /* abaikan */ }
   }
 
+  // Stok boleh minus (misalnya stok awal belum diisi), jadi tanda minus diizinkan.
+  function parseStock(text) {
+    var t = String(text == null ? "" : text).trim();
+    if (!t) return 0;
+    var neg = t.charAt(0) === "-";
+    var n = parseNum(neg ? t.slice(1) : t);
+    return isFinite(n) ? (neg ? -n : n) : NaN;
+  }
+
   function qtyText(n) { return String(+Number(n).toFixed(4)).replace(".", ","); }
 
   function matById(id) {
@@ -185,7 +194,7 @@
 
   async function load() {
     var r = await Promise.all([
-      sb.from("materials").select("id,name,unit,price").eq("business_id", biz.id).order("name"),
+      sb.from("materials").select("id,name,unit,price,stock").eq("business_id", biz.id).order("name"),
       sb.from("products").select("id,name,sell_price,cost_override,active").eq("business_id", biz.id).order("name"),
       sb.from("product_recipe").select("product_id,material_id,qty").eq("business_id", biz.id)
     ]);
@@ -225,6 +234,7 @@
         field("Nama bahan", '<input class="hpp-in" id="matName" maxlength="80" placeholder="Contoh: Tepung terigu" value="' + esc(m ? m.name : "") + '">') +
         field("Satuan", '<input class="hpp-in" id="matUnit" list="hppUnits" maxlength="20" placeholder="kg" value="' + esc(m ? m.unit : "") + '">') +
         field("Harga per satuan (Rp)", '<input class="hpp-in" id="matPrice" inputmode="decimal" placeholder="12000" value="' + esc(m ? fmtInput(m.price) : "") + '">') +
+        field("Stok saat ini", '<input class="hpp-in" id="matStock" inputmode="decimal" placeholder="0" value="' + esc(m ? qtyText(m.stock || 0) : "") + '">') +
       '</div>' +
       '<datalist id="hppUnits">' + UNITS.map(function (u) { return '<option value="' + u + '">'; }).join("") + '</datalist>' +
       '<div class="hpp-row hpp-gap">' +
@@ -242,7 +252,8 @@
     box.innerHTML = materials.map(function (m) {
       return '<div class="hpp-card hpp-item">' +
         '<div class="hpp-item-main"><b>' + esc(m.name) + '</b><div class="hpp-muted">' +
-          money(m.price) + ' per ' + esc(m.unit) + '</div></div>' +
+          money(m.price) + ' per ' + esc(m.unit) +
+          ' · Stok ' + qtyText(m.stock || 0) + ' ' + esc(m.unit) + (Number(m.stock) < 0 ? ' ⚠ minus, isi stok awal' : '') + '</div></div>' +
         '<div class="hpp-row">' +
           '<button type="button" class="hpp-btn" data-act="matEdit" data-id="' + esc(m.id) + '">Ubah</button>' +
           '<button type="button" class="hpp-btn" data-act="matDel" data-id="' + esc(m.id) + '">Hapus</button>' +
@@ -398,11 +409,13 @@
     var price = parseNum(val("matPrice"));
     if (!name) { notify("Nama bahan wajib diisi.", true); return; }
     if (!isFinite(price) || price < 0) { notify("Harga per satuan belum benar. Ketik angkanya saja, contoh: 12000.", true); return; }
+    var stock = parseStock(val("matStock"));
+    if (!isFinite(stock)) { notify("Stok belum benar. Ketik angkanya saja, contoh: 3 atau 0,5.", true); return; }
     var editId = matEditId;
     run(async function () {
       var res = editId
-        ? await sb.from("materials").update({ name: name, unit: unit, price: price }).eq("id", editId)
-        : await sb.from("materials").insert({ business_id: biz.id, name: name, unit: unit, price: price });
+        ? await sb.from("materials").update({ name: name, unit: unit, price: price, stock: stock }).eq("id", editId)
+        : await sb.from("materials").insert({ business_id: biz.id, name: name, unit: unit, price: price, stock: stock });
       if (res.error) throw res.error;
       matEditId = null;
     }, editId ? "Bahan diperbarui." : "Bahan ditambahkan.");
