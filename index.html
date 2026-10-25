@@ -42,17 +42,31 @@
         </div>
 
         <div class="tile">
+          <div class="tile-icon">🧪</div>
+          <h3>HPP Hari Ini</h3>
+          <p class="summary-value" id="sumHpp">-</p>
+          <p id="sumHppNote">Memuat...</p>
+        </div>
+
+        <div class="tile">
+          <div class="tile-icon">📈</div>
+          <h3>Laba Kotor Hari Ini</h3>
+          <p class="summary-value" id="sumGross">-</p>
+          <p id="sumGrossNote">Pendapatan dikurangi HPP.</p>
+        </div>
+
+        <div class="tile">
           <div class="tile-icon">💸</div>
-          <h3>Beban Hari Ini</h3>
+          <h3>Beban Operasional Hari Ini</h3>
           <p class="summary-value" id="sumExpense">-</p>
           <p id="sumExpenseNote">Memuat...</p>
         </div>
 
         <div class="tile">
           <div class="tile-icon">📊</div>
-          <h3>Selisih Hari Ini</h3>
+          <h3>Laba Bersih Hari Ini</h3>
           <p class="summary-value" id="sumProfit">-</p>
-          <p id="sumProfitNote">Pendapatan dikurangi beban.</p>
+          <p id="sumProfitNote">Laba kotor dikurangi beban operasional.</p>
         </div>
 
         <div class="tile">
@@ -204,7 +218,8 @@
 <script>
   /* Kartu ringkasan: angka dibaca dari data ERP yang sudah disinkronkan
      dari Supabase (termasuk transaksi dari bot Telegram). Hanya transaksi
-     berstatus posted yang dihitung, sama seperti perintah /omzet di bot. */
+     berstatus posted yang dihitung, sama seperti perintah /omzet di bot.
+     HPP dipisah dari Beban Operasional. */
   (function () {
     function setText(id, text) {
       var el = document.getElementById(id);
@@ -223,6 +238,9 @@
           setText("sumRevenueNote", "Belum ada usaha aktif.");
           setText("sumExpense", "-");
           setText("sumExpenseNote", "Pilih usaha di Data Usaha.");
+          setText("sumHpp", "-");
+          setText("sumHppNote", "");
+          setText("sumGross", "-");
           setText("sumProfit", "-");
           setText("sumCash", "-");
           return;
@@ -236,13 +254,22 @@
           var a = byId[String(id)];
           return !!a && groups.indexOf(a.group) !== -1;
         }
+        // HPP = akun "Harga Pokok Penjualan" (dibaca dari namanya, bukan dari kelompoknya),
+        // supaya tidak tercampur ke Beban Operasional.
+        function isHpp(id) {
+          var a = byId[String(id)];
+          return !!a && /harga pokok penjualan/i.test(String(a.name || ""));
+        }
+        function isOpex(id) {
+          return isGroup(id, ["Beban"]) && !isHpp(id);
+        }
         function isCash(id) {
           var a = byId[String(id)];
           return !!a && !!a.isCash;
         }
 
         var today = jakartaToday();
-        var revenue = 0, expense = 0, count = 0, cash = 0;
+        var revenue = 0, hpp = 0, expense = 0, count = 0, cash = 0;
 
         ERP.getActiveTransactions().forEach(function (t) {
           var amt = Number(t.amount) || 0;
@@ -254,15 +281,22 @@
 
           if (isGroup(t.creditAccountId, ["Pendapatan"])) { revenue += amt; count++; }
           if (isGroup(t.debitAccountId, ["Pendapatan"])) revenue -= amt;
-          if (isGroup(t.debitAccountId, ["Beban"])) expense += amt;
-          if (isGroup(t.creditAccountId, ["Beban"])) expense -= amt;
+          if (isHpp(t.debitAccountId)) hpp += amt;
+          if (isHpp(t.creditAccountId)) hpp -= amt;
+          if (isOpex(t.debitAccountId)) expense += amt;
+          if (isOpex(t.creditAccountId)) expense -= amt;
         });
 
         setText("sumRevenue", ERP.formatMoney(revenue));
         setText("sumRevenueNote", count + " transaksi");
+        setText("sumHpp", ERP.formatMoney(hpp));
+        setText("sumHppNote", (hpp === 0 && revenue > 0)
+          ? "HPP belum tercatat (produk belum punya resep atau modal)."
+          : "Harga pokok penjualan.");
+        setText("sumGross", ERP.formatMoney(revenue - hpp));
         setText("sumExpense", ERP.formatMoney(expense));
-        setText("sumExpenseNote", "Harga pokok (HPP) belum dihitung.");
-        setText("sumProfit", ERP.formatMoney(revenue - expense));
+        setText("sumExpenseNote", "Di luar HPP.");
+        setText("sumProfit", ERP.formatMoney(revenue - hpp - expense));
         setText("sumCash", ERP.formatMoney(cash));
       } catch (error) {
         console.error("Gagal menyusun ringkasan:", error);
