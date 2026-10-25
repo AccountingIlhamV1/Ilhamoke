@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Neraca Saldo Setelah Penutupan</h1>
           <p id="topbarSubtitle">Hanya akun riil (Aset, Liabilitas, Ekuitas) setelah jurnal penutup diposting</p>
@@ -41,8 +41,8 @@
         </div>
         <div id="balanceStatus" class="status-pill balance" style="margin-top:10px">Memeriksa saldo...</div>
         <div class="actions-row" style="margin-top:10px">
-          <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel</button>
-          <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF</button>
+          <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel</button>
+          <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF</button>
         </div>
       </div>
 
@@ -72,7 +72,7 @@
       </div>
 
       <div class="card">
-        <h2>🔎 Verifikasi Akun Nominal</h2>
+        <h2>Verifikasi Akun Nominal</h2>
         <p class="card-sub">Pendapatan &amp; Beban seharusnya semuanya Rp0 di sini.</p>
         <div class="table-wrapper">
           <table>
@@ -115,7 +115,7 @@
       document.getElementById("totalDebit").textContent = ERP.formatMoney(0);
       document.getElementById("totalCredit").textContent = ERP.formatMoney(0);
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ Tidak ada usaha/akun aktif";
+      status.textContent = "Tidak ada usaha/akun aktif";
       return;
     }
 
@@ -180,10 +180,10 @@
 
     if (difference < 0.01) {
       status.className = "status-pill balance";
-      status.textContent = "✓ BALANCE — Debit dan Kredit seimbang setelah penutupan";
+      status.textContent = "BALANCE — Debit dan Kredit seimbang setelah penutupan";
     } else {
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ TIDAK BALANCE — Selisih " + ERP.formatMoney(difference) +
+      status.textContent = "TIDAK BALANCE — Selisih " + ERP.formatMoney(difference) +
         (unclosedCount > 0
           ? " — " + unclosedCount + " akun Pendapatan/Beban belum ditutup. Buat dulu di halaman Jurnal Penutup."
           : "");
@@ -204,7 +204,7 @@
             <tr>
               <td>${ERP.escapeHTML(account.code)}</td>
               <td>${ERP.escapeHTML(account.name)}</td>
-              <td class="number ${isZero ? "text-debit" : "text-credit"}">${ERP.formatMoney(net)} ${isZero ? "✓" : "⚠️ belum ditutup"}</td>
+              <td class="number ${isZero ? "text-debit" : "text-credit"}">${ERP.formatMoney(net)} ${isZero ? "<i class=ico-check></i>" : "belum ditutup"}</td>
             </tr>
           `;
         }).join("");

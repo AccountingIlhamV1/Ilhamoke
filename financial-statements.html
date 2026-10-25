@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Laporan Keuangan</h1>
           <p id="topbarSubtitle">Laba Rugi &amp; Posisi Keuangan (sudah termasuk jurnal penyesuaian)</p>
@@ -47,14 +47,14 @@
             per-periode. <span id="periodNote"></span>
           </div>
           <div class="actions-row" style="margin-top:10px">
-            <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel</button>
-            <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF</button>
+            <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel</button>
+            <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF</button>
           </div>
         </div>
 
         <!-- ===== LAPORAN LABA RUGI ===== -->
         <div class="card">
-          <h2>📈 Laporan Laba Rugi</h2>
+          <h2>Laporan Laba Rugi</h2>
           <p class="card-sub">Periode berjalan usaha aktif.</p>
 
           <div class="section-title">Pendapatan</div>
@@ -93,7 +93,7 @@
 
         <!-- ===== LAPORAN POSISI KEUANGAN (NERACA) ===== -->
         <div class="card">
-          <h2>🏛️ Laporan Posisi Keuangan (Neraca)</h2>
+          <h2>Laporan Posisi Keuangan (Neraca)</h2>
           <p class="card-sub">Per akhir periode, usaha aktif.</p>
 
           <div class="section-title">Aset</div>
@@ -261,10 +261,10 @@
 
     if (difference < 0.01) {
       status.className = "status-pill balance";
-      status.textContent = "✓ BALANCE — Aset = Liabilitas + Ekuitas";
+      status.textContent = "BALANCE — Aset = Liabilitas + Ekuitas";
     } else {
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ TIDAK BALANCE — Selisih " + ERP.formatMoney(difference);
+      status.textContent = "TIDAK BALANCE — Selisih " + ERP.formatMoney(difference);
     }
   }
 

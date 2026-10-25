@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Persiapan Awal</h1>
           <p id="topbarSubtitle">Saldo awal usaha: harta, utang, dan modal</p>
@@ -40,7 +40,7 @@
 
       <!-- Sudah terisi -->
       <div class="card" id="doneCard" style="display:none">
-        <h2>✅ Persiapan Awal Sudah Diisi</h2>
+        <h2>Persiapan Awal Sudah Diisi</h2>
         <p class="card-sub">Saldo awal usaha ini sudah dicatat. Kalau ada yang salah, batalkan lalu isi ulang.</p>
         <div class="table-wrapper">
           <table class="table-wide">
@@ -49,7 +49,7 @@
           </table>
         </div>
         <div style="margin-top:12px">
-          <button type="button" class="btn-delete" id="redoButton">↶ Batalkan dan isi ulang</button>
+          <button type="button" class="btn-delete" id="redoButton"><i class=ico-undo></i> Batalkan dan isi ulang</button>
         </div>
       </div>
 
@@ -57,27 +57,27 @@
       <div id="formArea">
 
         <div class="card">
-          <h2>📅 Tanggal Saldo Awal</h2>
+          <h2>Tanggal Saldo Awal</h2>
           <p class="card-sub">Biasanya hari pertama tahun buku.</p>
           <input type="date" id="dateInput">
         </div>
 
         <div class="card">
-          <h2>🏪 Harta (Aset)</h2>
+          <h2>Harta (Aset)</h2>
           <p class="card-sub">Kas, bank, peralatan, perlengkapan, stok barang, dan lain-lain. Satu akun boleh dipakai di beberapa baris, misalnya dua peralatan berbeda.</p>
           <div id="assetBody"></div>
           <button type="button" class="btn-cancel btn-sm" id="addAssetButton">+ Tambah baris harta</button>
         </div>
 
         <div class="card">
-          <h2>🧾 Utang Awal</h2>
+          <h2>Utang Awal</h2>
           <p class="card-sub">Kosongkan kalau tidak ada.</p>
           <div id="debtBody"></div>
           <button type="button" class="btn-cancel btn-sm" id="addDebtButton">+ Tambah baris utang</button>
         </div>
 
         <div class="card">
-          <h2>💰 Modal</h2>
+          <h2>Modal</h2>
           <p class="card-sub">Modal pemilik pada saat mulai.</p>
           <div style="display:flex; gap:8px; flex-wrap:wrap">
             <select id="equitySelect" style="flex:2 1 220px"></select>
@@ -86,7 +86,7 @@
         </div>
 
         <div class="card">
-          <h2>⚖️ Pemeriksaan</h2>
+          <h2>Pemeriksaan</h2>
           <div style="line-height:1.9">
             <div>Total harta: <strong id="sumAsset">Rp 0</strong></div>
             <div>Total utang: <strong id="sumDebt">Rp 0</strong></div>

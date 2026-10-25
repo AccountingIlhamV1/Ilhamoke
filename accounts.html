@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Chart of Accounts</h1>
           <p id="topbarSubtitle">Daftar akun berdasarkan usaha yang sedang aktif</p>
@@ -38,13 +38,13 @@
 
 
       <div class="card" id="importAccountsCard" style="display:none">
-        <h2>📥 COA Lama di Perangkat Ini</h2>
+        <h2>COA Lama di Perangkat Ini</h2>
         <p class="card-sub" id="importAccountsText"></p>
         <button type="button" class="btn-save" id="importAccountsButton">Impor COA ke Akun</button>
       </div>
 
       <div class="card">
-        <h2>⚡ Isi COA Otomatis</h2>
+        <h2>Isi COA Otomatis</h2>
         <p class="card-sub">Pilih jenis usaha, lalu klik tombol. Ratusan akun standar langsung terisi lengkap dengan kode, kelompok, saldo normal, dan penanda Kas/Bank. Akun yang namanya sudah ada tidak diduplikasi, dan kalau kodenya bentrok, akun baru otomatis diberi kode kosong berikutnya.</p>
 
         <div class="form-grid">
@@ -60,13 +60,13 @@
           </div>
           <div>
             <label>&nbsp;</label>
-            <button type="button" class="btn-save" id="loadTemplateButton">⚡ Muat Template COA</button>
+            <button type="button" class="btn-save" id="loadTemplateButton"><i class=ico-zap></i> Muat Template COA</button>
           </div>
         </div>
         <div id="templatePreview" class="status-line" style="margin-top:10px"></div>
 
         <details style="margin-top:10px">
-          <summary style="cursor:pointer">👀 Lihat daftar akun template</summary>
+          <summary style="cursor:pointer">Lihat daftar akun template</summary>
           <div class="table-wrapper" style="margin-top:8px">
             <table class="table-wide">
               <thead><tr><th>Kode</th><th>Nama Akun</th><th>Kelompok</th><th>Saldo Normal</th></tr></thead>
@@ -77,7 +77,7 @@
       </div>
 
       <div class="card">
-        <h2 id="formTitle">➕ Tambah Akun</h2>
+        <h2 id="formTitle">Tambah Akun</h2>
         <div id="statusMessage" class="status-line">Memuat data...</div>
 
         <form id="accountForm">
@@ -121,7 +121,7 @@
           <div class="form-group full" style="margin-top:10px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
               <input type="checkbox" id="isCash" style="width:auto">
-              💰 Ini akun Kas / Bank (dipakai untuk Laporan Arus Kas)
+              Ini akun Kas / Bank (dipakai untuk Laporan Arus Kas)
             </label>
           </div>
 
@@ -132,7 +132,7 @@
       </div>
 
       <div class="card">
-        <h2>📋 Daftar Chart of Accounts</h2>
+        <h2>Daftar Chart of Accounts</h2>
         <p class="card-sub">Hanya akun milik usaha aktif yang ditampilkan.</p>
 
         <div class="table-wrapper">
@@ -292,7 +292,7 @@
     document.getElementById("normalBalance").value = account.normalBalance || "";
     document.getElementById("isCash").checked = !!account.isCash;
 
-    document.getElementById("formTitle").textContent = "✏️ Edit Akun";
+    document.getElementById("formTitle").textContent = "Edit Akun";
     document.getElementById("saveButton").textContent = "Update Akun";
     document.getElementById("cancelButton").style.display = "inline-block";
 
@@ -344,7 +344,7 @@
     editingId = null;
     document.getElementById("accountForm").reset();
     document.getElementById("isCash").checked = false;
-    document.getElementById("formTitle").textContent = "➕ Tambah Akun";
+    document.getElementById("formTitle").textContent = "Tambah Akun";
     document.getElementById("saveButton").textContent = "Simpan Akun";
     document.getElementById("cancelButton").style.display = "none";
   }
@@ -448,12 +448,12 @@
       row.innerHTML = `
         <td>${index + 1}</td>
         <td><strong>${ERP.escapeHTML(account.code)}</strong></td>
-        <td>${ERP.escapeHTML(account.name)}${account.isCash ? ' <span title="Akun Kas/Bank">💰</span>' : ''}</td>
+        <td>${ERP.escapeHTML(account.name)}${account.isCash ? ' <span class="tag" title="Akun Kas/Bank">Kas/Bank</span>' : ''}</td>
         <td>${ERP.escapeHTML(account.group)}</td>
         <td>${ERP.escapeHTML(account.normalBalance)}</td>
         <td>
-          <button class="btn-edit" onclick="editAccount('${ERP.escapeHTML(account.id)}')">✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteAccount('${ERP.escapeHTML(account.id)}')">🗑️ Hapus</button>
+          <button class="btn-edit" onclick="editAccount('${ERP.escapeHTML(account.id)}')"><i class=ico-edit></i> Edit</button>
+          <button class="btn-delete" onclick="deleteAccount('${ERP.escapeHTML(account.id)}')"><i class=ico-trash></i> Hapus</button>
         </td>
       `;
 
@@ -652,7 +652,7 @@
     const body = document.getElementById("templateList");
     body.innerHTML = getTemplate(type).map(function (t) {
       return "<tr><td><strong>" + ERP.escapeHTML(t.code) + "</strong></td><td>" +
-        ERP.escapeHTML(t.name) + (t.isCash ? " 💰" : "") + "</td><td>" +
+        ERP.escapeHTML(t.name) + (t.isCash ? " (Kas/Bank)" : "") + "</td><td>" +
         ERP.escapeHTML(t.group) + "</td><td>" + ERP.escapeHTML(t.normalBalance) + "</td></tr>";
     }).join("");
   }

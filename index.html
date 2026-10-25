@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Dashboard</h1>
           <p id="topbarSubtitle">Ringkasan usaha</p>
@@ -41,25 +41,25 @@
 
           <div class="kpi-row">
             <div class="kpi">
-              <div class="kpi-top"><div class="kpi-ico">💰</div>Pendapatan</div>
+              <div class="kpi-top"><div class="kpi-ico"><i class="ico-wallet"></i></div>Pendapatan</div>
               <div class="kpi-value" id="kpiRevenue">-</div>
               <span class="kpi-delta delta-flat" id="kpiRevenueDelta">-</span>
               <div class="kpi-note" id="kpiRevenueNote"></div>
             </div>
             <div class="kpi">
-              <div class="kpi-top"><div class="kpi-ico">📈</div>Laba Kotor</div>
+              <div class="kpi-top"><div class="kpi-ico"><i class="ico-trending-up"></i></div>Laba Kotor</div>
               <div class="kpi-value" id="kpiGross">-</div>
               <span class="kpi-delta delta-flat" id="kpiGrossDelta">-</span>
               <div class="kpi-note" id="kpiGrossNote"></div>
             </div>
             <div class="kpi">
-              <div class="kpi-top"><div class="kpi-ico">📊</div>Laba Bersih</div>
+              <div class="kpi-top"><div class="kpi-ico"><i class="ico-bar-chart"></i></div>Laba Bersih</div>
               <div class="kpi-value" id="kpiNet">-</div>
               <span class="kpi-delta delta-flat" id="kpiNetDelta">-</span>
               <div class="kpi-note" id="kpiNetNote"></div>
             </div>
             <div class="kpi">
-              <div class="kpi-top"><div class="kpi-ico">🏦</div>Kas &amp; Bank</div>
+              <div class="kpi-top"><div class="kpi-ico"><i class="ico-landmark"></i></div>Kas &amp; Bank</div>
               <div class="kpi-value" id="kpiCash">-</div>
               <span class="kpi-delta delta-flat">Saldo saat ini</span>
               <div class="kpi-note">Dari seluruh transaksi</div>
@@ -70,8 +70,8 @@
             <div class="dash-card-head">
               <h3>Pendapatan &amp; Biaya, 7 Hari Terakhir</h3>
               <div class="chart-legend">
-                <span><i style="background:#0f766e"></i>Pendapatan</span>
-                <span><i style="background:#b9c9c7"></i>Biaya (HPP + Beban)</span>
+                <span><i style="background:#1d4ed8"></i>Pendapatan</span>
+                <span><i style="background:#b3c3da"></i>Biaya (HPP + Beban)</span>
               </div>
             </div>
             <div class="chart-box" id="chartBox"><div class="chart-empty">Memuat grafik...</div></div>
@@ -104,10 +104,10 @@
           <div class="dash-card">
             <div class="dash-card-head"><h3>Aksi Cepat</h3></div>
             <div class="quick-grid">
-              <a class="quick-btn" href="journal.html"><span>📝</span>Catat Jurnal</a>
-              <a class="quick-btn" href="products.html"><span>🧪</span>Bahan &amp; Produk</a>
-              <a class="quick-btn" href="financial-statements.html"><span>📈</span>Laporan Keuangan</a>
-              <a class="quick-btn" href="ledger.html"><span>📚</span>Buku Besar</a>
+              <a class="quick-btn" href="journal.html"><span><i class="ico-edit"></i></span>Catat Jurnal</a>
+              <a class="quick-btn" href="products.html"><span><i class="ico-flask"></i></span>Bahan &amp; Produk</a>
+              <a class="quick-btn" href="financial-statements.html"><span><i class="ico-trending-up"></i></span>Laporan Keuangan</a>
+              <a class="quick-btn" href="ledger.html"><span><i class="ico-book"></i></span>Buku Besar</a>
             </div>
           </div>
 
@@ -130,28 +130,28 @@
       <div class="grid-cards">
 
         <div class="tile">
-          <div class="tile-icon">🏢</div>
+          <div class="tile-icon"><i class="ico-building"></i></div>
           <h3>Data Usaha</h3>
           <p>Kelola data perusahaan, alamat, periode atau tahun buku, serta pilih usaha yang sedang aktif.</p>
           <a href="business.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">📋</div>
+          <div class="tile-icon"><i class="ico-list"></i></div>
           <h3>Chart of Accounts</h3>
           <p>Kelola daftar akun perusahaan seperti kas, piutang, persediaan, aset tetap, utang, modal, pendapatan, dan beban.</p>
           <a href="accounts.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">🧾</div>
+          <div class="tile-icon"><i class="ico-receipt"></i></div>
           <h3>Transaksi</h3>
           <p>Input transaksi perusahaan dan tentukan akun debit serta kredit, lengkap dengan nomor invoice.</p>
           <a href="transactions.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">🧪</div>
+          <div class="tile-icon"><i class="ico-flask"></i></div>
           <h3>Bahan &amp; Produk</h3>
           <p>Daftarkan bahan baku, produk, dan resep supaya HPP dan laba bersih dihitung otomatis.</p>
           <a href="products.html" class="btn btn-primary">Buka</a>
@@ -164,35 +164,35 @@
       <div class="grid-cards">
 
         <div class="tile">
-          <div class="tile-icon">📖</div>
+          <div class="tile-icon"><i class="ico-book-open"></i></div>
           <h3>Jurnal Umum</h3>
           <p>Sistem menghasilkan jurnal umum secara otomatis berdasarkan transaksi yang telah dimasukkan.</p>
           <a href="journal.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">📚</div>
+          <div class="tile-icon"><i class="ico-book"></i></div>
           <h3>Buku Besar</h3>
           <p>Menampilkan mutasi setiap akun beserta total debit, kredit, dan saldo akhir akun.</p>
           <a href="ledger.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">🧮</div>
+          <div class="tile-icon"><i class="ico-calculator"></i></div>
           <h3>Neraca Saldo</h3>
           <p>Menampilkan saldo seluruh akun dan memastikan total debit sama dengan total kredit.</p>
           <a href="trial-balance.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">🛠️</div>
+          <div class="tile-icon"><i class="ico-sliders"></i></div>
           <h3>Jurnal Penyesuaian</h3>
           <p>Catat jurnal penyesuaian akhir periode sebelum laporan keuangan disusun.</p>
           <a href="adjusting-journal.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">📈</div>
+          <div class="tile-icon"><i class="ico-trending-up"></i></div>
           <h3>Laporan Keuangan</h3>
           <p>Laporan Laba Rugi dan Laporan Posisi Keuangan (Neraca), sudah termasuk jurnal penyesuaian.</p>
           <a href="financial-statements.html" class="btn btn-primary">Buka</a>
@@ -205,28 +205,28 @@
       <div class="grid-cards">
 
         <div class="tile">
-          <div class="tile-icon">🔒</div>
+          <div class="tile-icon"><i class="ico-lock"></i></div>
           <h3>Jurnal Penutup</h3>
           <p>Menutup akun Pendapatan dan Beban ke akun Ekuitas di akhir periode.</p>
           <a href="closing-journal.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">✅</div>
+          <div class="tile-icon"><i class="ico-check-circle"></i></div>
           <h3>Neraca Saldo Setelah Penutupan</h3>
           <p>Menampilkan saldo akun riil setelah jurnal penutup diposting, dan memverifikasi akun nominal sudah nol.</p>
           <a href="post-closing-trial-balance.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">💹</div>
+          <div class="tile-icon"><i class="ico-pie"></i></div>
           <h3>Perubahan Ekuitas</h3>
           <p>Mutasi modal: setoran, penarikan/prive, dan laba bersih periode berjalan.</p>
           <a href="equity-changes.html" class="btn btn-primary">Buka</a>
         </div>
 
         <div class="tile">
-          <div class="tile-icon">💵</div>
+          <div class="tile-icon"><i class="ico-wallet"></i></div>
           <h3>Arus Kas</h3>
           <p>Laporan arus kas metode langsung: aktivitas operasi, investasi, dan pendanaan.</p>
           <a href="cash-flow.html" class="btn btn-primary">Buka</a>
@@ -239,7 +239,7 @@
       <div class="grid-cards">
 
         <div class="tile">
-          <div class="tile-icon">📑</div>
+          <div class="tile-icon"><i class="ico-file-text"></i></div>
           <h3>PSAK 115</h3>
           <p>Pengakuan pendapatan kontrak secara bertahap berdasarkan persentase penyelesaian.</p>
           <a href="psak115.html" class="btn btn-primary">Buka</a>
@@ -300,19 +300,20 @@
   function setDelta(id, cur, prev) {
     var x = el(id);
     if (!x) return;
-    var cls = "delta-flat", text = "Sama seperti kemarin";
+    var UP = '<i class="ico-arrow-up"></i>', DOWN = '<i class="ico-arrow-down"></i>';
+    var cls = "delta-flat", html = "Sama seperti kemarin";
     if (prev === 0 && cur === 0) {
-      text = "Belum ada";
+      html = "Belum ada";
     } else if (prev === 0) {
       cls = cur > 0 ? "delta-up" : "delta-down";
-      text = cur > 0 ? "▲ Baru hari ini" : "▼ Baru hari ini";
+      html = (cur > 0 ? UP : DOWN) + "Baru hari ini";
     } else {
       var pct = (cur - prev) / Math.abs(prev) * 100;
-      if (pct > 0.5) { cls = "delta-up"; text = "▲ " + Math.round(pct) + "% dari kemarin"; }
-      else if (pct < -0.5) { cls = "delta-down"; text = "▼ " + Math.round(Math.abs(pct)) + "% dari kemarin"; }
+      if (pct > 0.5) { cls = "delta-up"; html = UP + Math.round(pct) + "% dari kemarin"; }
+      else if (pct < -0.5) { cls = "delta-down"; html = DOWN + Math.round(Math.abs(pct)) + "% dari kemarin"; }
     }
     x.className = "kpi-delta " + cls;
-    x.textContent = text;
+    x.innerHTML = html;
   }
 
   // Batas atas grafik dibuat dari 4 langkah yang rapi (1, 2, 2,5, 5 x 10^n).
@@ -340,8 +341,8 @@
     for (var i = 0; i <= 4; i++) {
       var val = top * i / 4;
       var y = T + ph - (ph * i / 4);
-      svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="#e3eaea" stroke-width="1"/>';
-      svg += '<text x="' + (L - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#8a9a99">' + shortMoney(val) + '</text>';
+      svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="#e3eaf3" stroke-width="1"/>';
+      svg += '<text x="' + (L - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#7b8ba2">' + shortMoney(val) + '</text>';
     }
     var gw = pw / days.length, bw = Math.min(26, gw * 0.3);
     days.forEach(function (d, idx) {
@@ -349,9 +350,9 @@
       var rev = per[d].rev, cost = per[d].hpp + per[d].opex;
       var hr = Math.max(0, rev) / top * ph, hc = Math.max(0, cost) / top * ph;
       var isToday = idx === days.length - 1;
-      svg += '<rect x="' + (cx - bw - 2) + '" y="' + (T + ph - hr) + '" width="' + bw + '" height="' + hr + '" rx="4" fill="#0f766e"><title>' + dayLabel(d) + " · Pendapatan " + esc(money(rev)) + "</title></rect>";
-      svg += '<rect x="' + (cx + 2) + '" y="' + (T + ph - hc) + '" width="' + bw + '" height="' + hc + '" rx="4" fill="#b9c9c7"><title>' + dayLabel(d) + " · Biaya " + esc(money(cost)) + "</title></rect>";
-      svg += '<text x="' + cx + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="' + (isToday ? "#134e4a" : "#8a9a99") + '"' + (isToday ? ' font-weight="700"' : "") + ">" + dayLabel(d) + "</text>";
+      svg += '<rect x="' + (cx - bw - 2) + '" y="' + (T + ph - hr) + '" width="' + bw + '" height="' + hr + '" rx="4" fill="#1d4ed8"><title>' + dayLabel(d) + " · Pendapatan " + esc(money(rev)) + "</title></rect>";
+      svg += '<rect x="' + (cx + 2) + '" y="' + (T + ph - hc) + '" width="' + bw + '" height="' + hc + '" rx="4" fill="#b3c3da"><title>' + dayLabel(d) + " · Biaya " + esc(money(cost)) + "</title></rect>";
+      svg += '<text x="' + cx + '" y="' + (H - 9) + '" text-anchor="middle" font-size="11" fill="' + (isToday ? "#0f1b2d" : "#7b8ba2") + '"' + (isToday ? ' font-weight="700"' : "") + ">" + dayLabel(d) + "</text>";
     });
     svg += "</svg>";
     setHtml("chartBox", svg);

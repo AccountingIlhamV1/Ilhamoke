@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Data Usaha</h1>
           <p id="topbarSubtitle">Kelola data usaha dan periode akuntansi</p>
@@ -31,13 +31,13 @@
     <main class="content">
 
       <div class="card" id="importCard" style="display:none">
-        <h2>📥 Data Lama di Perangkat Ini</h2>
+        <h2>Data Lama di Perangkat Ini</h2>
         <p class="card-sub" id="importText"></p>
         <button type="button" class="btn-save" id="importButton">Impor ke Akun</button>
       </div>
 
       <div class="card">
-        <h2 id="formTitle">➕ Tambah Data Usaha</h2>
+        <h2 id="formTitle">Tambah Data Usaha</h2>
         <p class="card-sub">Setiap usaha memiliki COA dan transaksi masing-masing berdasarkan <strong>businessId</strong>.</p>
 
         <form id="businessForm">
@@ -67,7 +67,7 @@
       </div>
 
       <div class="card">
-        <h2>📋 Daftar Usaha</h2>
+        <h2>Daftar Usaha</h2>
 
         <div class="table-wrapper">
           <table class="table-wide">
@@ -235,7 +235,7 @@
     document.getElementById("businessPeriod").value = business.period || "";
     document.getElementById("periodStart").value = business.periodStart || "";
 
-    document.getElementById("formTitle").textContent = "✏️ Edit Data Usaha";
+    document.getElementById("formTitle").textContent = "Edit Data Usaha";
     document.getElementById("saveButton").textContent = "Update Usaha";
     document.getElementById("cancelButton").style.display = "inline-block";
 
@@ -293,7 +293,7 @@
   function resetForm() {
     editingId = null;
     document.getElementById("businessForm").reset();
-    document.getElementById("formTitle").textContent = "➕ Tambah Data Usaha";
+    document.getElementById("formTitle").textContent = "Tambah Data Usaha";
     document.getElementById("saveButton").textContent = "Simpan Usaha";
     document.getElementById("cancelButton").style.display = "none";
   }
@@ -341,11 +341,11 @@
         <td>${ERP.escapeHTML(business.address || "-")}</td>
         <td>${ERP.escapeHTML(business.period || "-")}</td>
         <td>${business.periodStart ? ERP.formatDate(business.periodStart) : "Seluruh riwayat"}</td>
-        <td>${isActive ? `<span class="text-debit" style="color:var(--success)">✓ Usaha Aktif</span>` : "Tidak Aktif"}</td>
+        <td>${isActive ? `<span class="text-debit" style="color:var(--success)"><i class=ico-check></i> Usaha Aktif</span>` : "Tidak Aktif"}</td>
         <td>
           ${isActive ? "" : `<button class="btn-active" onclick="selectBusiness('${ERP.escapeHTML(business.id)}')">Pilih</button>`}
-          <button class="btn-edit" onclick="editBusiness('${ERP.escapeHTML(business.id)}')">✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteBusiness('${ERP.escapeHTML(business.id)}')">🗑️ Hapus</button>
+          <button class="btn-edit" onclick="editBusiness('${ERP.escapeHTML(business.id)}')"><i class=ico-edit></i> Edit</button>
+          <button class="btn-delete" onclick="deleteBusiness('${ERP.escapeHTML(business.id)}')"><i class=ico-trash></i> Hapus</button>
         </td>
       `;
 

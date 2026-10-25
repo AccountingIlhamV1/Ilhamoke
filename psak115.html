@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">PSAK 115</h1>
           <p id="topbarSubtitle">Pendapatan dari Kontrak dengan Pelanggan — pengakuan bertahap</p>
@@ -49,7 +49,7 @@
         </div>
 
         <div class="card">
-          <h2 id="formTitle">➕ Tambah Kontrak</h2>
+          <h2 id="formTitle">Tambah Kontrak</h2>
 
           <form id="contractForm">
             <div class="form-grid">
@@ -90,8 +90,8 @@
 
         <div class="card">
           <div class="actions-row">
-            <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel (semua kontrak)</button>
-            <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF (semua kontrak)</button>
+            <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel (semua kontrak)</button>
+            <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF (semua kontrak)</button>
           </div>
         </div>
 
@@ -134,7 +134,7 @@
   function resetForm() {
     editingId = null;
     document.getElementById("contractForm").reset();
-    document.getElementById("formTitle").textContent = "➕ Tambah Kontrak";
+    document.getElementById("formTitle").textContent = "Tambah Kontrak";
     document.getElementById("saveButton").textContent = "Simpan Kontrak";
     document.getElementById("cancelButton").style.display = "none";
   }
@@ -232,7 +232,7 @@
     document.getElementById("receivableAccount").value = contract.receivableAccountId || "";
     document.getElementById("startDate").value = contract.startDate || "";
 
-    document.getElementById("formTitle").textContent = "✏️ Edit Kontrak";
+    document.getElementById("formTitle").textContent = "Edit Kontrak";
     document.getElementById("saveButton").textContent = "Update Kontrak";
     document.getElementById("cancelButton").style.display = "inline-block";
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -376,10 +376,10 @@
 
           <div class="actions-row" style="margin:14px 0">
             <button class="btn-save" onclick="recognizeRevenue('${contract.id}')" ${pct >= 100 ? "disabled" : ""}>
-              📈 ${pct >= 100 ? "Sudah 100% Selesai" : "Akui Pendapatan"}
+              ${pct >= 100 ? "Sudah 100% Selesai" : "Akui Pendapatan"}
             </button>
-            <button class="btn-edit" onclick="editContract('${contract.id}')">✏️ Edit</button>
-            <button class="btn-delete" onclick="deleteContract('${contract.id}')">🗑️ Hapus</button>
+            <button class="btn-edit" onclick="editContract('${contract.id}')"><i class=ico-edit></i> Edit</button>
+            <button class="btn-delete" onclick="deleteContract('${contract.id}')"><i class=ico-trash></i> Hapus</button>
           </div>
 
           <div class="table-wrapper">

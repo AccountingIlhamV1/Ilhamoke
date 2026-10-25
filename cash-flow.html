@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Laporan Arus Kas</h1>
           <p id="topbarSubtitle">Metode langsung, berdasarkan akun yang ditandai Kas/Bank</p>
@@ -41,7 +41,7 @@
 
         <div class="card">
           <div class="info-box">
-            Laporan ini dihitung dari setiap jurnal yang menyentuh akun bertanda 💰 Kas/Bank
+            Laporan ini dihitung dari setiap jurnal yang menyentuh akun yang ditandai Kas/Bank
             (atur di <a href="accounts.html">Chart of Accounts</a>). Perpindahan antar akun Kas/Bank sendiri
             (misal kas ke bank) tidak dihitung karena tidak mengubah total kas usaha. "Kenaikan/Penurunan Kas
             Bersih" dan "Kas Awal" mengikuti Tanggal Mulai Periode Berjalan di <a href="business.html">Data Usaha</a>
@@ -84,14 +84,14 @@
               <strong id="netChange">Rp0</strong>
             </div>
             <div class="summary-box">
-              <span>Saldo Kas Akhir (seluruh akun 💰)</span>
+              <span>Saldo Kas Akhir (seluruh akun Kas/Bank)</span>
               <strong id="endingCash">Rp0</strong>
             </div>
           </div>
           <div id="checkStatus" class="status-pill balance" style="margin-top:10px"></div>
           <div class="actions-row" style="margin-top:10px">
-            <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel</button>
-            <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF</button>
+            <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel</button>
+            <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF</button>
           </div>
         </div>
 
@@ -178,7 +178,7 @@
     if (cashAccounts.length === 0) {
       mainContent.style.display = "none";
       emptyState.style.display = "block";
-      emptyMessage.innerHTML = `Belum ada akun yang ditandai 💰 Kas/Bank. Tandai minimal satu akun (misal "Kas") di <a href="accounts.html">Chart of Accounts</a>.`;
+      emptyMessage.innerHTML = `Belum ada akun yang ditandai Kas/Bank. Tandai minimal satu akun (misal "Kas") di <a href="accounts.html">Chart of Accounts</a>.`;
       return;
     }
 
@@ -254,10 +254,10 @@
 
     if (difference < 0.01) {
       status.className = "status-pill balance";
-      status.textContent = "✓ COCOK — Kenaikan/penurunan kas sesuai mutasi kas periode ini";
+      status.textContent = "COCOK — Kenaikan/penurunan kas sesuai mutasi kas periode ini";
     } else {
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ Ada selisih " + ERP.formatMoney(difference) + " — kemungkinan ada akun non-riil yang belum masuk salah satu kategori aktivitas";
+      status.textContent = "Ada selisih " + ERP.formatMoney(difference) + " — kemungkinan ada akun non-riil yang belum masuk salah satu kategori aktivitas";
     }
   }
 

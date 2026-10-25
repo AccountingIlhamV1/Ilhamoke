@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Kotak Masuk Telegram</h1>
           <p id="topbarSubtitle">Pesan transaksi dari bot Telegram untuk usaha yang sedang aktif</p>
@@ -39,7 +39,7 @@
       <div id="messageBox" class="info-box" style="display:none"></div>
 
       <div class="card" id="linkCard">
-        <h2>🔗 Tautan Telegram</h2>
+        <h2>Tautan Telegram</h2>
         <p class="card-sub" id="linkStatus">Memuat status...</p>
 
         <div id="linkActions" style="display:none; margin-bottom:12px">
@@ -57,7 +57,7 @@
       </div>
 
       <div class="card">
-        <h2>⚙️ Posting Otomatis</h2>
+        <h2>Posting Otomatis</h2>
         <p class="card-sub">Kalau aktif, transaksi dari <strong>menu tombol</strong> Telegram langsung masuk ke Transaksi (dan laporan) begitu kamu menekan Simpan di bot. Kalau mati, semuanya masuk Kotak Masuk sebagai draf. Pesan ketikan bebas selalu menjadi draf. Hanya pemilik usaha yang bisa mengubahnya.</p>
         <label style="display:flex; gap:10px; align-items:center; font-weight:700">
           <input type="checkbox" id="autoMenuToggle" checked>
@@ -66,7 +66,7 @@
       </div>
 
       <div class="card">
-        <h2>📥 Pesan Masuk</h2>
+        <h2>Pesan Masuk</h2>
         <p class="card-sub">Pesan yang dikirim lewat Telegram ke usaha aktif. Catat transaksinya di halaman Transaksi, lalu tandai Selesai di sini.
           <a href="transactions.html">Buka Transaksi</a></p>
 
@@ -74,7 +74,7 @@
           <button type="button" class="btn-save btn-sm" data-filter="new" id="tabNew">Baru</button>
           <button type="button" class="btn-cancel btn-sm" data-filter="confirmed" id="tabConfirmed">Selesai</button>
           <button type="button" class="btn-cancel btn-sm" data-filter="rejected" id="tabRejected">Ditolak</button>
-          <button type="button" class="btn-cancel btn-sm" id="refreshButton">🔄 Muat ulang</button>
+          <button type="button" class="btn-cancel btn-sm" id="refreshButton"><i class=ico-refresh></i> Muat ulang</button>
         </div>
 
         <div class="table-wrapper">
@@ -292,7 +292,7 @@
         ${p.amount ? "<div>Nominal terbaca: " + esc(formatMoneyId(p.amount)) + "</div>" : ""}
       </div>`;
     }
-    const notes = p.notes.map(n => "<div>⚠ " + esc(n) + "</div>").join("");
+    const notes = p.notes.map(n => "<div>" + esc(n) + "</div>").join("");
     const border = p.status === "lengkap" ? "#bbf7d0" : "#fde68a";
     const bg = p.status === "lengkap" ? "#f0fdf4" : "#fffbeb";
     return `<div style="${box} border:1px solid ${border}; background:${bg}">
@@ -325,16 +325,16 @@
     const id = ERP.escapeHTML(row.id);
     if (row.transaction_id) {
       if (row.status === "confirmed") {
-        return `<div style="font-size:13px; margin-bottom:6px">✓ Sudah jadi transaksi</div>
-                <button class="btn-delete btn-sm" data-act="void" data-id="${id}">↶ Batalkan transaksi</button>`;
+        return `<div style="font-size:13px; margin-bottom:6px"><i class=ico-check></i> Sudah jadi transaksi</div>
+                <button class="btn-delete btn-sm" data-act="void" data-id="${id}"><i class=ico-undo></i> Batalkan transaksi</button>`;
       }
       return `<div style="font-size:13px">Transaksi dibatalkan</div>`;
     }
     if (row.status === "new") {
-      return `<button class="btn-active btn-sm" data-act="confirmed" data-id="${id}">✅ Selesai</button>
-              <button class="btn-delete btn-sm" data-act="rejected" data-id="${id}">✖ Tolak</button>`;
+      return `<button class="btn-active btn-sm" data-act="confirmed" data-id="${id}"><i class=ico-check></i> Selesai</button>
+              <button class="btn-delete btn-sm" data-act="rejected" data-id="${id}"><i class=ico-close></i> Tolak</button>`;
     }
-    return `<button class="btn-edit btn-sm" data-act="new" data-id="${id}">↩ Kembalikan ke Baru</button>`;
+    return `<button class="btn-edit btn-sm" data-act="new" data-id="${id}"><i class=ico-undo></i> Kembalikan ke Baru</button>`;
   }
 
   async function loadInbox() {

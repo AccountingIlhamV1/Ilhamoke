@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Neraca Saldo</h1>
           <p id="topbarSubtitle">Trial Balance usaha aktif (sudah termasuk jurnal penyesuaian)</p>
@@ -36,9 +36,9 @@
       <div class="card">
         <div id="balanceStatus" class="status-pill balance">Memeriksa saldo...</div>
         <div class="actions-row" style="margin-top:14px">
-          <button class="btn-primary" onclick="renderTrialBalance()">🔄 Refresh</button>
-          <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel</button>
-          <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF</button>
+          <button class="btn-primary" onclick="renderTrialBalance()"><i class=ico-refresh></i> Refresh</button>
+          <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel</button>
+          <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF</button>
         </div>
       </div>
 
@@ -125,7 +125,7 @@
       totalDebitEl.textContent = ERP.formatMoney(0);
       totalCreditEl.textContent = ERP.formatMoney(0);
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ Tidak ada usaha aktif";
+      status.textContent = "Tidak ada usaha aktif";
       return;
     }
 
@@ -137,7 +137,7 @@
       totalDebitEl.textContent = ERP.formatMoney(0);
       totalCreditEl.textContent = ERP.formatMoney(0);
       status.className = "status-pill balance";
-      status.textContent = "✓ Saldo seimbang";
+      status.textContent = "Saldo seimbang";
       return;
     }
 
@@ -200,10 +200,10 @@
 
     if (difference < 0.01) {
       status.className = "status-pill balance";
-      status.textContent = "✓ BALANCE — Debit dan Kredit seimbang";
+      status.textContent = "BALANCE — Debit dan Kredit seimbang";
     } else {
       status.className = "status-pill not-balance";
-      status.textContent = "⚠️ TIDAK BALANCE — Selisih " + ERP.formatMoney(difference);
+      status.textContent = "TIDAK BALANCE — Selisih " + ERP.formatMoney(difference);
     }
   }
 

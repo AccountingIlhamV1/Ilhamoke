@@ -22,7 +22,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Buku Besar</h1>
           <p id="topbarSubtitle">Mutasi & saldo tiap akun (transaksi + jurnal penyesuaian)</p>
@@ -34,8 +34,8 @@
     <main class="content">
       <div class="card">
         <div class="actions-row">
-          <button class="btn-save" onclick="handleExport('xlsx')">📊 Export Excel (semua akun)</button>
-          <button class="btn-save" onclick="handleExport('pdf')">📄 Export PDF (semua akun)</button>
+          <button class="btn-save" onclick="handleExport('xlsx')"><i class=ico-sheet></i> Export Excel (semua akun)</button>
+          <button class="btn-save" onclick="handleExport('pdf')"><i class=ico-file-text></i> Export PDF (semua akun)</button>
         </div>
       </div>
       <div id="ledgerContainer"></div>
@@ -97,9 +97,9 @@
           .forEach(entry => {
 
             const amount = Number(entry.amount) || 0;
-            const sourceLabel = entry.source === "Penyesuaian" ? "🛠️ AJP"
-              : entry.source === "PSAK 115" ? "📑 PSAK115"
-              : "🧾 Transaksi";
+            const sourceLabel = entry.source === "Penyesuaian" ? "AJP"
+              : entry.source === "PSAK 115" ? "PSAK115"
+              : "Transaksi";
 
             if (ERP.idEqual(entry.debitAccountId, account.id)) {
               totalDebit += amount;

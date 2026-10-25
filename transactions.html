@@ -19,7 +19,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Transaksi</h1>
           <p id="topbarSubtitle">Input transaksi dan pencatatan jurnal otomatis</p>
@@ -37,13 +37,13 @@
       </div>
 
       <div class="card" id="importLegacyCard" style="display:none">
-        <h2>📥 Transaksi Lama di Perangkat Ini</h2>
+        <h2>Transaksi Lama di Perangkat Ini</h2>
         <p class="card-sub" id="importLegacyText"></p>
         <button type="button" class="btn-save" id="importLegacyButton">Impor Transaksi ke Akun</button>
       </div>
 
       <div class="card">
-        <h2 id="formTitle">➕ Input Transaksi</h2>
+        <h2 id="formTitle">Input Transaksi</h2>
         <div id="statusMessage" class="status-line">Memuat data...</div>
 
         <form id="transactionForm">
@@ -89,7 +89,7 @@
       </div>
 
       <div class="card" id="importCard">
-        <h2>📥 Import CSV dari Kasir Catat.in</h2>
+        <h2>Import CSV dari Kasir Catat.in</h2>
         <p class="card-sub">Pilih file CSV hasil ekspor kasir. Setiap transaksi kasir menjadi satu jurnal penjualan: Debit akun penerimaan (sesuai metode bayar), Kredit akun pendapatan. Kalau file berisi harga modal (skema 1.2), ditambah jurnal HPP: Debit HPP, Kredit Persediaan. Transaksi yang sudah pernah diimpor otomatis dilewati.</p>
 
         <input type="file" id="csvFile" accept=".csv,text/csv">
@@ -124,7 +124,7 @@
       </div>
 
       <div class="card">
-        <h2>📋 Daftar Transaksi</h2>
+        <h2>Daftar Transaksi</h2>
         <p class="card-sub">Hanya transaksi milik usaha aktif yang ditampilkan.</p>
 
         <div class="table-wrapper">
@@ -254,7 +254,7 @@
   function resetForm() {
     editingId = null;
     document.getElementById("transactionForm").reset();
-    document.getElementById("formTitle").textContent = "➕ Input Transaksi";
+    document.getElementById("formTitle").textContent = "Input Transaksi";
     document.getElementById("saveButton").textContent = "Simpan Transaksi";
     document.getElementById("cancelButton").style.display = "none";
     setDefaultDate();
@@ -431,7 +431,7 @@
     document.getElementById("creditAccount").value = transaction.creditAccountId || "";
     document.getElementById("amount").value = formatAmountInput(String(transaction.amount || "").replace(".", ","));
 
-    document.getElementById("formTitle").textContent = "✏️ Edit Transaksi";
+    document.getElementById("formTitle").textContent = "Edit Transaksi";
     document.getElementById("saveButton").textContent = "Update Transaksi";
     document.getElementById("cancelButton").style.display = "inline-block";
 
@@ -1007,8 +1007,8 @@
         <td class="credit">${credit ? `${ERP.escapeHTML(credit.code)} - ${ERP.escapeHTML(credit.name)}` : "-"}</td>
         <td class="number">${ERP.formatMoney(transaction.amount)}</td>
         <td>
-          <button class="btn-edit" onclick="editTransaction('${ERP.escapeHTML(transaction.id)}')">✏️ Edit</button>
-          <button class="btn-delete" onclick="deleteTransaction('${ERP.escapeHTML(transaction.id)}')">🗑️ Hapus</button>
+          <button class="btn-edit" onclick="editTransaction('${ERP.escapeHTML(transaction.id)}')"><i class=ico-edit></i> Edit</button>
+          <button class="btn-delete" onclick="deleteTransaction('${ERP.escapeHTML(transaction.id)}')"><i class=ico-trash></i> Hapus</button>
         </td>
       `;
 

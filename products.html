@@ -45,7 +45,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu"><i class="ico-menu"></i></button>
         <div>
           <h1 id="topbarTitle">Bahan &amp; Produk</h1>
           <p id="topbarSubtitle">Resep dan HPP</p>
@@ -253,7 +253,7 @@
       return '<div class="hpp-card hpp-item">' +
         '<div class="hpp-item-main"><b>' + esc(m.name) + '</b><div class="hpp-muted">' +
           money(m.price) + ' per ' + esc(m.unit) +
-          ' · Stok ' + qtyText(m.stock || 0) + ' ' + esc(m.unit) + (Number(m.stock) < 0 ? ' ⚠ minus, isi stok awal' : '') + '</div></div>' +
+          ' · Stok ' + qtyText(m.stock || 0) + ' ' + esc(m.unit) + (Number(m.stock) < 0 ? ' minus, isi stok awal' : '') + '</div></div>' +
         '<div class="hpp-row">' +
           '<button type="button" class="hpp-btn" data-act="matEdit" data-id="' + esc(m.id) + '">Ubah</button>' +
           '<button type="button" class="hpp-btn" data-act="matDel" data-id="' + esc(m.id) + '">Hapus</button>' +
@@ -313,7 +313,7 @@
       '<input class="hpp-in rcQty" data-i="' + i + '" inputmode="decimal" placeholder="Jumlah" value="' + esc(r.qty) + '">' +
       '<span class="hpp-unit">' + esc(m ? m.unit : "") + '</span>' +
       '<span class="hpp-sub" id="rcSub' + i + '"></span>' +
-      '<button type="button" class="hpp-btn" data-act="rcDel" data-i="' + i + '" aria-label="Hapus baris">✕</button>' +
+      '<button type="button" class="hpp-btn" data-act="rcDel" data-i="' + i + '" aria-label="Hapus baris"><i class=ico-close></i></button>' +
     '</div>';
   }
 
