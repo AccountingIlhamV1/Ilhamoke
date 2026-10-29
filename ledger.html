@@ -52,7 +52,7 @@
   ERP.initLayout({
     active: "ledger",
     title: "Buku Besar",
-    subtitle: "Mutasi & saldo tiap akun (transaksi + jurnal penyesuaian)"
+    subtitle: "Mutasi & saldo tiap akun (transaksi + jurnal penyesuaian + jurnal penutup)"
   });
 
   function renderLedger() {
@@ -71,7 +71,7 @@
     }
 
     const accounts = ERP.getActiveAccounts();
-    const entries = ERP.getActiveJournalEntries();
+    const entries = ERP.getActivePostClosingEntries();
 
     if (accounts.length === 0) {
       container.innerHTML = `
@@ -99,6 +99,7 @@
             const amount = Number(entry.amount) || 0;
             const sourceLabel = entry.source === "Penyesuaian" ? "AJP"
               : entry.source === "PSAK 115" ? "PSAK115"
+              : entry.source === "Penutup" ? "Penutup"
               : "Transaksi";
 
             if (ERP.idEqual(entry.debitAccountId, account.id)) {
@@ -188,7 +189,7 @@
   function handleExport(format) {
     const business = ERP.getActiveBusiness();
     const accounts = ERP.getActiveAccounts();
-    const entries = ERP.getActiveJournalEntries();
+    const entries = ERP.getActivePostClosingEntries();
 
     if (!business || accounts.length === 0) {
       alert("Tidak ada data untuk diexport.");

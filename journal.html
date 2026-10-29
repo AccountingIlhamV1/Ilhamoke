@@ -94,7 +94,7 @@
   ERP.initLayout({
     active: "journal",
     title: "Jurnal Umum",
-    subtitle: "Dibuat otomatis dari transaksi usaha aktif"
+    subtitle: "Dibuat otomatis dari transaksi usaha aktif, jurnal penutup tampil terpisah"
   });
 
   function renderJournal() {
@@ -111,7 +111,9 @@
     let totalDebit = 0;
     let totalCredit = 0;
 
-    if (transactions.length === 0) {
+    const closingEntries = getClosingForJournal(business);
+
+    if (transactions.length === 0 && closingEntries.length === 0) {
       table.innerHTML = `<tr><td colspan="6" class="empty">Belum ada transaksi untuk usaha aktif.</td></tr>`;
       updateTotals(0, 0);
       return;
@@ -148,7 +150,53 @@
       totalCredit += amount;
     });
 
+    // Jurnal penutup ditampilkan sebagai kelompok terpisah di bawah transaksi biasa.
+    if (closingEntries.length > 0) {
+      const header = document.createElement("tr");
+      header.innerHTML = `<td colspan="6" style="background:var(--warning-bg, #fef3c7);font-weight:700;">Jurnal Penutup <span style="font-weight:400;">(menutup akun Pendapatan/Beban ke ekuitas, bukan transaksi kasir)</span></td>`;
+      table.appendChild(header);
+
+      closingEntries.forEach((entry, i) => {
+        const amount = Number(entry.amount) || 0;
+        const debitAccount = ERP.getAccountById(entry.debitAccountId);
+        const creditAccount = ERP.getAccountById(entry.creditAccountId);
+
+        const debitLabel = debitAccount ? `${debitAccount.code} - ${debitAccount.name}` : "Akun tidak ditemukan";
+        const creditLabel = creditAccount ? `${creditAccount.code} - ${creditAccount.name}` : "Akun tidak ditemukan";
+        const badge = `<span style="display:inline-block;padding:1px 8px;border-radius:999px;background:var(--warning-bg, #fef3c7);font-size:11px;font-weight:700;">PENUTUP</span>`;
+
+        const debitRow = document.createElement("tr");
+        debitRow.innerHTML = `
+          <td rowspan="2">${transactions.length + i + 1}</td>
+          <td rowspan="2">${ERP.escapeHTML(entry.date || "-")}</td>
+          <td rowspan="2">${badge} ${ERP.escapeHTML(entry.reference || "-")}<br>${ERP.escapeHTML(entry.description || "-")}</td>
+          <td class="debit">${ERP.escapeHTML(debitLabel)}</td>
+          <td class="number debit">${ERP.formatMoney(amount)}</td>
+          <td class="number">-</td>
+        `;
+        table.appendChild(debitRow);
+
+        const creditRow = document.createElement("tr");
+        creditRow.innerHTML = `
+          <td class="credit" style="padding-left:35px">${ERP.escapeHTML(creditLabel)}</td>
+          <td class="number">-</td>
+          <td class="number credit">${ERP.formatMoney(amount)}</td>
+        `;
+        table.appendChild(creditRow);
+
+        totalDebit += amount;
+        totalCredit += amount;
+      });
+    }
+
     updateTotals(totalDebit, totalCredit);
+  }
+
+  // Jurnal penutup usaha aktif, mengikuti filter tanggal periode yang sama dengan transaksi.
+  function getClosingForJournal(business) {
+    return ERP.filterEntriesFromDate(ERP.getActiveClosingJournalEntries(), ERP.getPeriodStart(business))
+      .slice()
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.reference).localeCompare(String(b.reference)));
   }
 
   function updateTotals(totalDebit, totalCredit) {
@@ -164,7 +212,9 @@
       .slice()
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
-    if (!business || transactions.length === 0) {
+    const closingEntries = business ? getClosingForJournal(business) : [];
+
+    if (!business || (transactions.length === 0 && closingEntries.length === 0)) {
       alert("Tidak ada data untuk diexport.");
       return;
     }
@@ -176,7 +226,14 @@
       debit: ERP.getAccountById(t.debitAccountId),
       credit: ERP.getAccountById(t.creditAccountId),
       amount: t.amount
-    }));
+    })).concat(closingEntries.map(c => ({
+      date: c.date,
+      reference: c.reference,
+      description: "[Penutup] " + (c.description || ""),
+      debit: ERP.getAccountById(c.debitAccountId),
+      credit: ERP.getAccountById(c.creditAccountId),
+      amount: c.amount
+    })));
 
     ERP.exportReport(format || "xlsx", `Jurnal-Umum-${business.name}.xlsx`, [
       ERP.buildJournalSheet({ title: "Jurnal Umum", sheetName: "Jurnal Umum", businessName: business.name, period: business.period, entries })
