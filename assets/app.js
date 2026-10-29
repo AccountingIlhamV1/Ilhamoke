@@ -1740,11 +1740,11 @@ const ERP = (function () {
     if (isUuid(business.id)) await closingStore.sync();
   }
 
-  // Dipakai KHUSUS oleh Neraca Saldo Setelah Penutupan: transaksi +
-  // penyesuaian + PSAK 115 + jurnal penutup, sehingga akun nominal
-  // otomatis bersaldo nol.
-  function getActivePostClosingEntries() {
-    const closing = getActiveClosingEntries().map(c => ({
+  // Jurnal penutup usaha aktif dalam bentuk entri jurnal yang seragam
+  // (source: "Penutup"), supaya bisa dibaca Jurnal Umum, Buku Besar, dan
+  // Neraca Saldo Setelah Penutupan tanpa mengubah getActiveJournalEntries().
+  function getActiveClosingJournalEntries() {
+    return getActiveClosingEntries().map(c => ({
       id: c.id,
       date: c.date,
       reference: c.reference || "-",
@@ -1754,8 +1754,15 @@ const ERP = (function () {
       amount: Number(c.amount) || 0,
       source: "Penutup"
     }));
+  }
 
-    return getActiveJournalEntries().concat(closing);
+  // Transaksi + penyesuaian + PSAK 115 + jurnal penutup, sehingga akun
+  // nominal otomatis bersaldo nol. Dipakai Buku Besar dan Neraca Saldo
+  // Setelah Penutupan. JANGAN dipakai Laba Rugi / Neraca / Perubahan
+  // Ekuitas: laporan itu menghitung laba berjalan sendiri, jadi jurnal
+  // penutup di sana akan membuat laba terhitung dua kali.
+  function getActivePostClosingEntries() {
+    return getActiveJournalEntries().concat(getActiveClosingJournalEntries());
   }
 
   /* ---------- SALDO AKUN (dipakai bersama banyak laporan) ---------- */
@@ -2111,6 +2118,7 @@ const ERP = (function () {
     getActiveClosingEntries,
     generateClosingEntries,
     clearClosingEntries,
+    getActiveClosingJournalEntries,
     getActivePostClosingEntries,
     computeAccountBalances,
     signedBalance,
