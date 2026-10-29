@@ -128,7 +128,7 @@
               <tbody id="equityBody"></tbody>
               <tfoot>
                 <tr>
-                  <td>Laba / Rugi Berjalan</td>
+                  <td id="equityNetIncomeLabel">Laba / Rugi Berjalan</td>
                   <td class="number" id="equityNetIncome">Rp0</td>
                 </tr>
                 <tr class="total-row">
@@ -198,6 +198,50 @@
     return total;
   }
 
+  /* ---- DATA NERACA SETELAH MEMPERHITUNGKAN JURNAL PENUTUP ----
+     Laba Rugi tetap dihitung dari transaksi periode berjalan (tanpa jurnal penutup).
+     Untuk Neraca, jurnal penutup periode berjalan ikut dihitung per akun:
+       - akun ekuitas tujuan (mis. Saldo Laba Ditahan) menerima kredit penutupan;
+       - "Laba/Rugi Berjalan" hanya berisi sisa akun Pendapatan/Beban yang BELUM ditutup,
+         sehingga laba yang sudah dipindahkan tidak terhitung dua kali.
+     Status penutupan ditentukan per akun (saldo sisa akun nominal), bukan dari
+     sekadar ada/tidaknya satu jurnal penutup. */
+  function sumGroup(accounts, groups, netBal) {
+    return accounts
+      .filter(a => groups.includes(a.group))
+      .reduce((sum, a) => sum + ERP.signedBalance(a, netBal[String(a.id)] || 0, ERP.positiveSideOfGroup(a.group)), 0);
+  }
+
+  function buildStatementData(business, accounts) {
+    const entries = ERP.getActiveJournalEntries();
+    const periodStart = ERP.getPeriodStart(business);
+    const periodEntries = ERP.filterEntriesFromDate(entries, periodStart);
+    const closing = ERP.filterEntriesFromDate(ERP.getActiveClosingJournalEntries(), periodStart);
+
+    const netBalance = ERP.computeAccountBalances(accounts, entries.concat(closing));
+    const netBalancePeriod = ERP.computeAccountBalances(accounts, periodEntries);
+    const afterClosing = ERP.computeAccountBalances(accounts, periodEntries.concat(closing));
+
+    // Sisa laba/rugi periode berjalan yang belum dipindahkan ke ekuitas.
+    const unclosedIncome = sumGroup(accounts, REVENUE_GROUPS, afterClosing) - sumGroup(accounts, EXPENSE_GROUPS, afterClosing);
+
+    // Akun nominal yang punya aktivitas periode ini, dan apakah masih ada sisanya.
+    const nominal = accounts.filter(a => REVENUE_GROUPS.includes(a.group) || EXPENSE_GROUPS.includes(a.group));
+    const active = nominal.filter(a => Math.abs(netBalancePeriod[String(a.id)] || 0) > 0.004);
+    const remaining = active.filter(a => Math.abs(afterClosing[String(a.id)] || 0) > 0.004);
+
+    let closingState = "none";
+    if (closing.length > 0) closingState = remaining.length === 0 ? "full" : "partial";
+
+    return { netBalance, netBalancePeriod, unclosedIncome, closingState, hasClosing: closing.length > 0 };
+  }
+
+  function incomeLabel(state) {
+    if (state === "full") return "Laba / Rugi Berjalan (periode sudah ditutup)";
+    if (state === "partial") return "Laba / Rugi Berjalan (sisa belum ditutup; jurnal penutup belum lengkap)";
+    return "Laba / Rugi Berjalan";
+  }
+
   function renderReport() {
     const business = ERP.getActiveBusiness();
     const emptyState = document.getElementById("emptyState");
@@ -225,10 +269,9 @@
     emptyState.style.display = "none";
     reportContent.style.display = "block";
 
-    const entries = ERP.getActiveJournalEntries();
-    const periodEntries = ERP.filterEntriesFromDate(entries, ERP.getPeriodStart(business));
-    const netBalance = ERP.computeAccountBalances(accounts, entries);
-    const netBalancePeriod = ERP.computeAccountBalances(accounts, periodEntries);
+    const data = buildStatementData(business, accounts);
+    const netBalance = data.netBalance;
+    const netBalancePeriod = data.netBalancePeriod;
 
     document.getElementById("periodNote").textContent = ERP.periodLabel(business);
 
@@ -251,9 +294,12 @@
 
     document.getElementById("totalAssets").textContent = ERP.formatMoney(totalAssets);
     document.getElementById("totalLiabilities").textContent = ERP.formatMoney(totalLiabilities);
-    document.getElementById("equityNetIncome").textContent = ERP.formatMoney(netIncome);
+    // Hanya sisa laba yang belum ditutup yang ditambahkan; yang sudah ditutup
+    // sudah ada di akun ekuitas (mis. Saldo Laba Ditahan) pada totalEquityAccounts.
+    document.getElementById("equityNetIncome").textContent = ERP.formatMoney(data.unclosedIncome);
+    document.getElementById("equityNetIncomeLabel").textContent = incomeLabel(data.closingState);
 
-    const totalEquity = totalEquityAccounts + netIncome;
+    const totalEquity = totalEquityAccounts + data.unclosedIncome;
     document.getElementById("totalEquity").textContent = ERP.formatMoney(totalEquity);
 
     const status = document.getElementById("balanceStatus");
@@ -285,10 +331,9 @@
       return;
     }
 
-    const entries = ERP.getActiveJournalEntries();
-    const periodEntries = ERP.filterEntriesFromDate(entries, ERP.getPeriodStart(business));
-    const netBalance = ERP.computeAccountBalances(accounts, entries);
-    const netBalancePeriod = ERP.computeAccountBalances(accounts, periodEntries);
+    const data = buildStatementData(business, accounts);
+    const netBalance = data.netBalance;
+    const netBalancePeriod = data.netBalancePeriod;
 
     // Di file Excel/PDF akun bersaldo nol disembunyikan agar laporan ringkas.
     // Kalau satu bagian kosong, diberi satu baris keterangan bernilai 0 supaya rumus total tetap valid.
@@ -326,7 +371,7 @@
     const totalAssets = assetRows.reduce((s, r) => s + r[2], 0);
     const totalLiabilities = liabilityRows.reduce((s, r) => s + r[2], 0);
     const totalEquityAccounts = equityRows.reduce((s, r) => s + r[2], 0);
-    const totalEquity = totalEquityAccounts + netIncome;
+    const totalEquity = totalEquityAccounts + data.unclosedIncome;
 
     const neracaRows = [
       [`Laporan Posisi Keuangan (Neraca) - ${business.name}`],
@@ -345,7 +390,8 @@
       ["EKUITAS"],
       ["Kode", "Nama Akun", "Jumlah"],
       ...equityRows,
-      ["", "Laba (Rugi) Berjalan", { v: netIncome, f: "{Laba Rugi!LABA (RUGI) BERSIH}" }],
+      // Rumus tertaut ke Laba Rugi hanya dipakai jika belum ada jurnal penutup.
+      ["", "Laba (Rugi) Berjalan", data.hasClosing ? data.unclosedIncome : { v: data.unclosedIncome, f: "{Laba Rugi!LABA (RUGI) BERSIH}" }],
       ["", "Total Ekuitas", totalEquity],
       [],
       ["", "TOTAL LIABILITAS + EKUITAS", { v: totalLiabilities + totalEquity, f: "{Total Liabilitas}+{Total Ekuitas}" }],
